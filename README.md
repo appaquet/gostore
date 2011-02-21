@@ -59,7 +59,7 @@ Integration tests for the file system service. Not all tests are passing since t
 
 Author
 ======================================================================================
-Andre-Philippe Paquet (http://www.appaquet.com/, Email: me@<my domain dot com>)
+Andre-Philippe Paquet (http://www.appaquet.com/, Email: me @ my domain dot com)
 
 
 
