@@ -32,7 +32,7 @@ type Containers []Container
 func (c Containers) Len() int { return len(c) }
 
 func (c Containers) Less(i, j int) bool {
-	return reflect.NewValue(c[i]).Addr() < reflect.NewValue(c[j]).Addr()
+	return reflect.NewValue(c[i]).Addr().Get() < reflect.NewValue(c[j]).Addr().Get()
 }
 
 func (c Containers) Swap(i, j int) { c[i], c[j] = c[j], c[i] }

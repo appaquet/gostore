@@ -191,7 +191,7 @@ var (
 	tests map[int]TestStep
 	steps []TestStep
 
-	init bool
+	initiated bool
 )
 
 type TestStep struct {
@@ -206,7 +206,7 @@ func (ts *TestStep) Execute(db *embdb.Db) {
 }
 
 func initSteps(resetTests bool) {
-	if !init {
+	if !initiated {
 		steps = []TestStep{
 			// set test/test0/dsfsd to true
 			TestStep{
@@ -459,7 +459,7 @@ func initSteps(resetTests bool) {
 				}},
 		}
 
-		init = true
+		initiated = true
 	}
 
 	if resetTests {
@@ -607,3 +607,4 @@ func BenchmarkRead(b *testing.B) {
 		benchDb.Execute(trx)
 	}
 }
+

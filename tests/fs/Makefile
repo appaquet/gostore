@@ -8,4 +8,4 @@ TARG=fstests
 
 GOFILES=test.go
 
-include $(GOROOT)/src/Make.pkg
+include $(GOROOT)/src/Make.cmd

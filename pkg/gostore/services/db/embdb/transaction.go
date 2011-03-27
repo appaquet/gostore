@@ -9,11 +9,9 @@ import (
 
 
 /*
-	CreateList(namespace, name, opts)
-	GetList(namespace, name)
-
-	CreateMap(namespace, name, opts)
-	GetMap(namespace, name)
+	CreateContainer(name, opts)
+	GetContainer(name)
+	DeleteContainer(name)
 
 
 	List
@@ -63,20 +61,28 @@ import (
 		Return -> Abort and return
 
 
-	t := db.NewTransaction(func(trx) {
-		ns := trx.GetNamespace("ns")
-		mymap := ns.GetMap("test")
-		o := mymap.Get("test")
+	
+	t := db.NewTransaction()
+	a := t.NewVar()
 
-		list := db.DefineList()
-		db.If(db.C(o.Get("key"), "=", "val"), func() {
-			db.Foreach(o.Get("somelist"), func(i, val) {
-				list.Append(val)
-			})
+	cont := t.GetContainer("mymap")
+	cont.Set("key", 1, db.Range("a", "b"), 1)
+
+	buck := cont.Get("key")
+
+	a.Set( cont.Get("key", "other_key") )
+
+	list := t.NewList()
+	t.If(db.Condition(o.Get("key"), "=", "val"), func(t) {
+		db.Foreach(o.Get("somelist"), func(i, val) {
+			t.InsertEnd(list, val)
 		})
-
-		db.Return(list)
 	})
+
+	t.Return(a, b, c)
+	db.ExecuteFor(t, cont)
+
+
 
 */
 

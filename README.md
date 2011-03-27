@@ -61,5 +61,3 @@ Author
 ======================================================================================
 Andre-Philippe Paquet (http://www.appaquet.com/, Email: me @ my domain dot com)
 
-
-
