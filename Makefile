@@ -3,7 +3,7 @@ all: install
 DIRS=	pkg\
 	cmd/gostore-server\
 	tests/fs\
-	tests/cls\
+#	tests/cls\
 
 
 NOTEST=	server\

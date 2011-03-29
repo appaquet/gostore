@@ -116,7 +116,7 @@ func StartNode(id int) {
 func StopNode(id int) {
 	proc := tc.nodes[id]
 	if proc != nil {
-		proc.Kill()
+		//proc.Kill()
 	}
 }
 
