@@ -17,7 +17,7 @@ func (cs *ClusterService) loadCluster() {
 	log.Debug("cls: Loading cluster data...")
 	stat, err := os.Stat(cs.clsDataPath)
 	if err == nil && stat.IsRegular() {
-		file, err := os.Open(cs.clsDataPath, os.O_RDONLY, 0777)
+		file, err := os.OpenFile(cs.clsDataPath, os.O_RDONLY, 0777)
 		if err == nil {
 			typedFile := typedio.NewReader(file)
 
@@ -56,7 +56,7 @@ func (cs ClusterService) saveCluster() {
 	cs.clusterMutex.Lock()
 
 	tempPath := fmt.Sprintf("%s/%d", os.TempDir(), time.Nanoseconds())
-	file, err := os.Open(tempPath, os.O_WRONLY|os.O_CREATE, 0777)
+	file, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE, 0777)
 	if err != nil {
 		log.Fatal("Couldn't open temp cluster data file", err)
 	}

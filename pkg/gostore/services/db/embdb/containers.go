@@ -32,7 +32,7 @@ type Containers []Container
 func (c Containers) Len() int { return len(c) }
 
 func (c Containers) Less(i, j int) bool {
-	return reflect.NewValue(c[i]).Addr().Get() < reflect.NewValue(c[j]).Addr().Get()
+	return reflect.NewValue(c[i]).Pointer() < reflect.NewValue(c[j]).Pointer()
 }
 
 func (c Containers) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
@@ -160,7 +160,7 @@ func (o *Object) save(namespace, objmap, objkey string, db *Db) {
 	if !o.isFlag(obj_flag_commited) {
 		// create new file
 		tempPath := fmt.Sprintf("%s/%d", db.config.DataTempPath, time.Nanoseconds())
-		file, err := os.Open(tempPath, os.O_WRONLY|os.O_CREATE, 777)
+		file, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE, 777)
 		if err != nil {
 			log.Fatal("Couldn't open temp file: %s", err)
 			return
@@ -217,7 +217,7 @@ func (o *Object) save(namespace, objmap, objkey string, db *Db) {
 }
 
 func loadObject(path string, headerOnly bool, db *Db) {
-	file, err := os.Open(path, os.O_RDONLY, 0777)
+	file, err := os.OpenFile(path, os.O_RDONLY, 0777)
 	if err != nil {
 		log.Fatal("Couldn't open data file %s: %s", path, err)
 		return

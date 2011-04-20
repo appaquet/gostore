@@ -61,7 +61,7 @@ func (db *Db) loadData() {
 	log.Info("Loading database data from disk at path %s...", db.config.DataPath)
 	loaded := 0
 
-	dataDirFile, err := os.Open(db.config.DataPath, os.O_RDONLY, 0777)
+	dataDirFile, err := os.OpenFile(db.config.DataPath, os.O_RDONLY, 0777)
 	if err != nil {
 		log.Fatal("Couldn't open data directory: %s", err)
 		return
@@ -76,7 +76,7 @@ func (db *Db) loadData() {
 	for _, nsDir := range nsDirs {
 		if nsDir.IsDirectory() {
 			nsPath := db.config.DataPath + nsDir.Name + "/"
-			nsDirFile, err := os.Open(nsPath, os.O_RDONLY, 0777)
+			nsDirFile, err := os.OpenFile(nsPath, os.O_RDONLY, 0777)
 			if err != nil {
 				log.Fatal("Couldn't open namespace directory: %s", err)
 				return
@@ -91,7 +91,7 @@ func (db *Db) loadData() {
 			for _, omDir := range omDirs {
 				if omDir.IsDirectory() {
 					omPath := nsPath + omDir.Name + "/"
-					omDirFile, err := os.Open(omPath, os.O_RDONLY, 0777)
+					omDirFile, err := os.OpenFile(omPath, os.O_RDONLY, 0777)
 					if err != nil {
 						log.Fatal("Couldn't open object map directory: %s", err)
 						return

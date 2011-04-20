@@ -61,7 +61,7 @@ func New(directory string) *CommitLog {
 
 	// open the log
 	flag := os.O_RDWR | os.O_CREATE
-	cl.fd, err = os.Open(path, flag, 0777)
+	cl.fd, err = os.OpenFile(path, flag, 0777)
 	if err != nil {
 		log.Fatal("CommitLog: Cannot open commit log file %s: %s", path, err)
 	}
