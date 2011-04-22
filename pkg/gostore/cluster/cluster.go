@@ -11,6 +11,13 @@ import (
 	"gostore/log"
 )
 
+const (
+	MAX_NODE_ID		= 65535
+)
+
+
+// TODO: replace all uint16 for token by a "Token" struct 
+
 // Cluster containing nodes, rings and nodes membership to 
 // rings.
 type Cluster struct {

@@ -6,6 +6,11 @@ include $(GOROOT)/src/Make.inc
 
 TARG=gostore/services/db
 
-GOFILES=*.go\
+GOFILES=db.go\
+	mutations.go\
+	operations.go\
+	container.go\
+	transaction.go\
+	segment.go\
 
 include $(GOROOT)/src/Make.pkg

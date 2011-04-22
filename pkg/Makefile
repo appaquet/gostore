@@ -11,7 +11,7 @@ DIRS=\
 	gostore/comm\
 	gostore/api/rest\
 	gostore/services/cls\
-	gostore/services/db/embdb\
+	gostore/services/db\
 	gostore/services/fs\
 	gostore/process\
 	

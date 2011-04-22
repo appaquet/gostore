@@ -1,33 +1,37 @@
-package embdb_test
+package db
 
 import (
 	"testing"
 	"os"
-	"gostore/services/db/embdb"
-	"fmt"
 	"gostore/log"
+	"gostore/tools/buffer"
+	"fmt"
 )
 
 var (
-	benchDb *embdb.Db
+	benchDb *Db
 )
 
-func newDb(wipe bool) *embdb.Db {
-	log.MaxLevel = 2
-
-	if wipe {
-		os.RemoveAll("_test")
-	}
-
-	dir, _ := os.Stat("data")
+func setupTests() {
+	dir, _ := os.Stat("_test")
 	if dir == nil || !dir.IsDirectory() {
 		os.Mkdir("_test", 0777)
-		os.Mkdir("_test/db", 0777)
-		os.Mkdir("_test/dbtmp", 0777)
-		os.Mkdir("_test/log", 0777)
+	}
+}
+
+
+func newDb(wipe bool) *Db {
+	log.MaxLevel = 2
+
+	setupTests()
+
+	if wipe {
+		os.RemoveAll("_test/data")
 	}
 
-	return embdb.NewDb(embdb.Config{"_test/db/", "_test/dbtmp/", "_test/log/"})
+	os.Mkdir("_test/data", 0777)
+
+	return NewDb(Config{DataPath:"_test/data/"})
 }
 
 func TestWalk(t *testing.T) {
@@ -37,21 +41,21 @@ func TestWalk(t *testing.T) {
 	data = 1
 
 	// create first level
-	embdb.Walk(true, &data, &container, []string{})
+	Walk(true, &data, &container, []string{})
 	if container != 1 {
 		t.Errorf("1) Container should be equal: 1!=%d", container)
 	}
 
 	// get first level
 	data = nil
-	embdb.Walk(false, &data, &container, []string{})
+	Walk(false, &data, &container, []string{})
 	if data != 1 {
 		t.Errorf("2) Container should be equal: 1!=%d", container)
 	}
 
 	// create second level with array
 	container = nil
-	embdb.Walk(true, &data, &container, []string{"0"})
+	Walk(true, &data, &container, []string{"0"})
 	if arr, ok := (container).([]interface{}); ok {
 		if arr[0] != 1 {
 			t.Errorf("3) arr[0] != 1, = %d", arr[0])
@@ -61,18 +65,18 @@ func TestWalk(t *testing.T) {
 	}
 
 	data = "OMG"
-	embdb.Walk(false, &data, &container, []string{"0"})
+	Walk(false, &data, &container, []string{"0"})
 
 	// get second level with array
 	data = nil
-	embdb.Walk(false, &data, &container, []string{"0"})
+	Walk(false, &data, &container, []string{"0"})
 	if data != "OMG" {
 		t.Errorf("5) arr[0] != OMG, = %s", data, container)
 	}
 
 	// add to a too small array
 	data = nil
-	embdb.Walk(true, &data, &container, []string{"2"})
+	Walk(true, &data, &container, []string{"2"})
 	arr, _ := (container).([]interface{})
 	if len(arr) != 3 {
 		t.Errorf("6) len(arr[2]) != 3, = %d", len(arr))
@@ -85,7 +89,7 @@ func TestWalk(t *testing.T) {
 	// create multi level map
 	container = nil
 	data = true
-	embdb.Walk(true, &data, &container, []string{"hello", "how"})
+	Walk(true, &data, &container, []string{"hello", "how"})
 	if mmap1, ok := (container).(map[string]interface{}); ok {
 		if mmap2, ok := (mmap1["hello"]).(map[string]interface{}); ok {
 			if mmap2["how"] != true {
@@ -99,26 +103,55 @@ func TestWalk(t *testing.T) {
 	}
 
 	// get multi level map
-	embdb.Walk(true, &data, &container, []string{"hello", "how"})
+	Walk(true, &data, &container, []string{"hello", "how"})
 	if data != true {
 		t.Errorf("9) mmap[hello][how] != true, = %s", data)
 	}
 }
 
+func TestSerialize(t *testing.T) {
+	buf1 := buffer.New()
+	trx1 := NewTransaction(func (b *TransBlock) {
+		b.Set("test", "toto", 1)
+	})
+	err := trx1.Serialize(buf1)
+	if err != nil {
+		t.Errorf("Got an error serializing: %s", err)
+	}
 
+	buf1.Seek(0, 0)
+	trx2 := NewEmptyTransaction()
+	trx2.Unserialize(buf1)
+
+
+	buf2 := buffer.New()
+	err = trx2.Serialize(buf2)
+	if err != nil {
+		t.Errorf("Got an error serializing: %s", err)
+	}
+
+
+	fmt.Printf("%v\n", buf1.Bytes())
+	fmt.Printf("%v\n", buf2.Bytes())
+}
+
+
+
+
+/*
 func TestSet(t *testing.T) {
-	db := newDb(true)
+	dbinst := newDb(true)
 
-	trx := embdb.NewTransaction()
+	trx := NewTransaction()
 	ret := trx.Set("namespace", "objmap", "objkey", map[string]interface{}{"test": 1})
-	db.Execute(trx)
+	dbinst.Execute(trx)
 	if ret.Error != nil {
 		t.Errorf("1) Got an error for set: %s", ret.Error)
 	}
 
-	trx = embdb.NewTransaction()
+	trx = NewTransaction()
 	ret = trx.Get("namespace", "objmap", "objkey", "test")
-	db.Execute(trx)
+	dbinst.Execute(trx)
 	if ret.Error != nil {
 		t.Errorf("2) Got an error for get: %s", ret.Error)
 	}
@@ -126,16 +159,16 @@ func TestSet(t *testing.T) {
 		t.Errorf("3) Written value should be 1, got %d", ret.Value)
 	}
 
-	trx = embdb.NewTransaction()
+	trx = NewTransaction()
 	ret = trx.Set("namespace", "objmap", "objkey", map[string]interface{}{"tata": true})
-	db.Execute(trx)
+	dbinst.Execute(trx)
 	if ret.Error != nil {
 		t.Errorf("4) Got an error for set: %s", ret.Error)
 	}
 
-	trx = embdb.NewTransaction()
+	trx = NewTransaction()
 	ret = trx.Get("namespace", "objmap", "objkey", "tata")
-	db.Execute(trx)
+	dbinst.Execute(trx)
 	if ret.Error != nil {
 		t.Errorf("5) Got an error for get: %s", ret.Error)
 	}
@@ -143,16 +176,16 @@ func TestSet(t *testing.T) {
 		t.Errorf("6) Written value should be 1, got %d", ret.Value)
 	}
 
-	trx = embdb.NewTransaction()
+	trx = NewTransaction()
 	ret = trx.Set("namespace", "objmap", "objkey", map[string]interface{}{"tata": []interface{}{1, 2, 3}})
-	db.Execute(trx)
+	dbinst.Execute(trx)
 	if ret.Error != nil {
 		t.Errorf("7) Got an error for set: %s", ret.Error)
 	}
 
-	trx = embdb.NewTransaction()
+	trx = NewTransaction()
 	ret = trx.Get("namespace", "objmap", "objkey", "tata")
-	db.Execute(trx)
+	dbinst.Execute(trx)
 	if ret.Error != nil {
 		t.Errorf("8) Got an error for get: %s", ret.Error)
 	}
@@ -164,23 +197,23 @@ func TestSet(t *testing.T) {
 		t.Errorf("10) Written value should be an array, got %s", ret.Value)
 	}
 
-	trx = embdb.NewTransaction()
+	trx = NewTransaction()
 	ret = trx.Get("namespace", "objmap", "objkeydsd")
-	db.Execute(trx)
+	dbinst.Execute(trx)
 	if ret.Error != nil {
 		t.Errorf("11) Shouldn't have got an error because object didn't exists: %s", ret.Error)
 	}
 
-	trx = embdb.NewTransaction()
+	trx = NewTransaction()
 	ret = trx.Get("namespace", "objmasp", "objkeydsd")
-	db.Execute(trx)
+	dbinst.Execute(trx)
 	if ret.Error == nil {
 		t.Errorf("12) Should have got an error because object map didn't exists: %s", ret.Error)
 	}
 
-	trx = embdb.NewTransaction()
+	trx = NewTransaction()
 	ret = trx.Get("namsfespace", "objmasp", "objkeydsd")
-	db.Execute(trx)
+	dbinst.Execute(trx)
 	if ret.Error == nil {
 		t.Errorf("13) Should have got an error because namespace didn't exists: %s", ret.Error)
 	}
@@ -196,12 +229,12 @@ var (
 
 type TestStep struct {
 	objId int
-	exec  func(db *embdb.Db)
-	test  func(db *embdb.Db) (error string)
+	exec  func(dbinst *Db)
+	test  func(dbinst *Db) (error string)
 }
 
-func (ts *TestStep) Execute(db *embdb.Db) {
-	ts.exec(db)
+func (ts *TestStep) Execute(dbinst *Db) {
+	ts.exec(dbinst)
 	tests[ts.objId] = *ts
 }
 
@@ -211,15 +244,15 @@ func initSteps(resetTests bool) {
 			// set test/test0/dsfsd to true
 			TestStep{
 				0,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Set("test", "test0", "dsfsd", true)
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "test0", "dsfsd")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if ret.Value != true {
 						return fmt.Sprintf("Expected true, got: %s", ret.Value)
@@ -231,16 +264,16 @@ func initSteps(resetTests bool) {
 			// reset test/test0/dsfsd twice in a transaction
 			TestStep{
 				0,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Set("test", "test0", "dsfsd", -1)
 					trx.Set("test", "test0", "dsfsd", false)
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "test0", "dsfsd")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if ret.Value != false {
 						return fmt.Sprintf("Expected false, got: %s", ret.Value)
@@ -252,15 +285,15 @@ func initSteps(resetTests bool) {
 			// set test/test1/obj to [1,2,3]
 			TestStep{
 				1,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Set("test", "test1", "obj", []interface{}{1, 2, 3})
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "test1", "obj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if arr, ok := ret.Value.([]interface{}); !ok || (arr[2] != 3 && arr[2] != float64(3)) {
 						return fmt.Sprintf("Expected []interface{1,2,3}, got: %s", ret.Value)
@@ -272,15 +305,15 @@ func initSteps(resetTests bool) {
 			// override test/test1/obj so that it changes to [1,2,4]
 			TestStep{
 				1,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Set("test", "test1", "obj", 4, "2")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "test1", "obj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if arr, ok := ret.Value.([]interface{}); !ok || (arr[2] != 4 && arr[2] != float64(4)) {
 						return fmt.Sprintf("Expected []interface{1,2,4}, got: %s", ret.Value)
@@ -292,15 +325,15 @@ func initSteps(resetTests bool) {
 			// increment an non existing object
 			TestStep{
 				2,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Add("test", "float", "myobj", float64(1))
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "float", "myobj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if ret.Value != float64(1) {
 						return fmt.Sprintf("Expected 1, got: %f", ret.Value)
@@ -312,15 +345,15 @@ func initSteps(resetTests bool) {
 			// increment an existing object
 			TestStep{
 				2,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Add("test", "float", "myobj", float64(1))
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "float", "myobj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if ret.Value != float64(2) {
 						return fmt.Sprintf("Expected 2, got: %f", ret.Value)
@@ -332,15 +365,15 @@ func initSteps(resetTests bool) {
 			// deincrement an existing object
 			TestStep{
 				2,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Add("test", "float", "myobj", float64(-4))
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "float", "myobj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if ret.Value != float64(-2) {
 						return fmt.Sprintf("Expected -2, got: %f", ret.Value)
@@ -352,17 +385,17 @@ func initSteps(resetTests bool) {
 			// multiple increment, set in one transaction
 			TestStep{
 				3,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Set("test", "dectr", "oobjj", float64(3))
 					trx.Add("test", "dectr", "oobjj", float64(10))
 					trx.Add("test", "dectr", "oobjj", float64(-2))
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "dectr", "oobjj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if ret.Value != float64(11) {
 						return fmt.Sprintf("Expected 11, got: %f", ret.Value)
@@ -374,19 +407,19 @@ func initSteps(resetTests bool) {
 			// create and delete object in 2 transactions
 			TestStep{
 				4,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Set("test", "del", "obj", float64(3))
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
-					trx = embdb.NewTransaction()
+					trx = NewTransaction()
 					trx.Delete("test", "del", "obj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "del", "obj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if ret.Value != nil {
 						return fmt.Sprintf("Expected nil, got: %s", ret.Value)
@@ -398,16 +431,16 @@ func initSteps(resetTests bool) {
 			// create and delete object in 1 transaction
 			TestStep{
 				5,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Set("test", "del2", "obj", float64(3))
 					trx.Delete("test", "del2", "obj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "del2", "obj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if ret.Value != nil {
 						return fmt.Sprintf("Expected nil, got: %s", ret.Value)
@@ -419,15 +452,15 @@ func initSteps(resetTests bool) {
 			// recreate a deleted object from another transaction
 			TestStep{
 				5,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Set("test", "del2", "obj", float64(10))
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "del2", "obj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if ret.Value != float64(10) {
 						return fmt.Sprintf("Expected 10, got: %s", ret.Value)
@@ -439,17 +472,17 @@ func initSteps(resetTests bool) {
 			// create, delete and increment object in 1 transaction
 			TestStep{
 				6,
-				func(db *embdb.Db) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) {
+					trx := NewTransaction()
 					trx.Set("test", "del3", "obj", float64(3))
 					trx.Delete("test", "del3", "obj")
 					trx.Add("test", "del3", "obj", float64(2))
-					db.Execute(trx)
+					dbinst.Execute(trx)
 				},
-				func(db *embdb.Db) (error string) {
-					trx := embdb.NewTransaction()
+				func(dbinst *Db) (error string) {
+					trx := NewTransaction()
 					ret := trx.Get("test", "del3", "obj")
-					db.Execute(trx)
+					dbinst.Execute(trx)
 
 					if ret.Value != float64(2) {
 						return fmt.Sprintf("Expected nil, got: %s", ret.Value)
@@ -524,7 +557,7 @@ func TestStepsCommit(t *testing.T) {
 
 				// commit the db to disk
 				if j == k {
-					db.Commit(-1)
+					Commit(-1)
 				}
 
 				// reset the db, it will replay its log
@@ -547,28 +580,28 @@ func TestStepsCommit(t *testing.T) {
 /*func TestReplay(t *testing.T) {
 	db := newDb(true)
 
-	trx := embdb.NewTransaction()
+	trx := NewTransaction()
 	trx.Set("namespace", "replaytest", "test", true)
-	db.Execute(trx)
+	dbinst.Execute(trx)
 
-	db.Commit(-1)
+	Commit(-1)
 	db = newDb(false)
 
-	trx = embdb.NewTransaction()
+	trx = NewTransaction()
 	ret := trx.Get("namespace", "replaytest", "test")
-	db.Execute(trx)
+	dbinst.Execute(trx)
 
 	if ret.Value != true {
 		t.Errorf("1) Object should be true")
 	}
 
 
-	db.Empty()
-	db.Replay()
+	Empty()
+	Replay()
 
-	trx = embdb.NewTransaction()
+	trx = NewTransaction()
 	ret = trx.Get("namespace", "replaytest", "test")
-	db.Execute(trx)
+	dbinst.Execute(trx)
 	if ret.Error != nil {
 		t.Errorf("1) Got an error for get: %s", ret.Error)
 	}
@@ -577,7 +610,7 @@ func TestStepsCommit(t *testing.T) {
 	}	
 
 
-}*/
+}
 
 
 func BenchmarkWrite(b *testing.B) {
@@ -588,9 +621,9 @@ func BenchmarkWrite(b *testing.B) {
 	}
 
 	for i := 0; i < b.N; i++ {
-		trx := embdb.NewTransaction()
+		trx := NewTransaction()
 		trx.Set("namespace", "bench", "bench", true)
-		benchDb.Execute(trx)
+		benchExecute(trx)
 	}
 }
 
@@ -602,9 +635,11 @@ func BenchmarkRead(b *testing.B) {
 	}
 
 	for i := 0; i < b.N; i++ {
-		trx := embdb.NewTransaction()
+		trx := NewTransaction()
 		trx.Get("namespace", "bench", "bench")
-		benchDb.Execute(trx)
+		benchExecute(trx)
 	}
 }
+*/
+
 
