@@ -18,7 +18,7 @@ func NewLocalFileHeader(headerpath string) *LocalFileHeader {
 	lfh := new(LocalFileHeader)
 	lfh.headerpath = headerpath
 
-	file, err := os.OpenFile(lfh.headerpath, os.O_RDONLY, 0777)
+	file, err := os.Open(lfh.headerpath, os.O_RDONLY, 0777)
 
 	// no error
 	if err == nil {
@@ -48,7 +48,7 @@ func (lfh *LocalFileHeader) Save() {
 		log.Error("Couldn't marshal header: %s", err)
 	}
 
-	file, err := os.OpenFile(lfh.headerpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	file, err := os.Open(lfh.headerpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		log.Error("Couldn't save header file for %s: %s", lfh.headerpath, err)
 

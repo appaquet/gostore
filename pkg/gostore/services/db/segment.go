@@ -214,8 +214,7 @@ func (m *SegmentManager) WriteMutation(token Token, mutation Mutation) {
 	entry.token = token
 	entry.mutation = mutation
 
-	dbm := m.db.MutationManager.GetMutation(mutation)
-	entry.mutid = dbm.id
+	entry.mutid = mutations.GetId(mutation)
 
 	segment := m.GetCurrentSegment(token)
 	segment.Write(entry)
@@ -259,7 +258,7 @@ func openSegment(path string) *Segment {
 	}
 	seg.tokens = TokenRange{from, to}
 
-	seg.fd, err = os.OpenFile(path, os.O_RDWR | os.O_CREATE, 0777)
+	seg.fd, err = os.Open(path, os.O_RDWR | os.O_CREATE, 0777)
 	if err != nil {
 		log.Fatal("Couldn't open segment %s: %s", path, err)
 	}
@@ -280,7 +279,7 @@ func createSegment(dataDir string, token_from, token_to Token, position uint64) 
 	var err os.Error
 
 	filePath := fmt.Sprintf("%s/%04X_%04X_%016X.seg", dataDir, token_from, token_to, position)
-	seg.fd, err = os.OpenFile(filePath, os.O_RDWR | os.O_CREATE, 0777)
+	seg.fd, err = os.Open(filePath, os.O_RDWR | os.O_CREATE, 0777)
 	if err != nil {
 		log.Fatal("Couldn't open segment %s: %s", filePath, err)
 	}

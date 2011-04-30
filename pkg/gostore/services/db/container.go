@@ -21,7 +21,7 @@ func (r *Root) String() string {
 
 
 type Container struct {
-	objects map[string]Object
+	objects map[string]ContainerObject
 }
 
 func (c *Container) String() string {
@@ -32,7 +32,7 @@ func (c *Container) String() string {
 
 
 
-type Object struct {
+type ContainerObject struct {
 	flags		byte
 	segment		uint16
 	position	uint32
@@ -44,11 +44,11 @@ const (
 	obj_flag_deleted byte = 0x01
 )
 
-func (o *Object) String() string {
-	return fmt.Sprintf("Object[seg=%d, pos=%d, data=%v]", o.segment, o.position, o.data)
+func (o *ContainerObject) String() string {
+	return fmt.Sprintf("ContainerObject[seg=%d, pos=%d, data=%v]", o.segment, o.position, o.data)
 }
 
-func (o *Object) isFlag(flag byte) bool {
+func (o *ContainerObject) isFlag(flag byte) bool {
 	if o.flags&flag == flag {
 		return true
 	}
@@ -56,7 +56,7 @@ func (o *Object) isFlag(flag byte) bool {
 	return false
 }
 
-func (o *Object) setFlag(flag byte, value bool) {
+func (o *ContainerObject) setFlag(flag byte, value bool) {
 	if value {
 		o.flags = o.flags | flag
 	} else {

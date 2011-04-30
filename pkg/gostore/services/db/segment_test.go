@@ -90,12 +90,12 @@ func TestSegmentMutation(t *testing.T) {
 	db := newDb(true)
 	_ = fmt.Print
 	mut := &testMut{}
-	db.MutationManager.AddMutation(mut)
+	mutations.AddMutation(mut)
 
 
 	for i:=0; i<1000; i++ {
 		token := Token(rand.Intn(65536))
-		db.SegmentManager.WriteMutation(token, mut)
+		db.segmentManager.WriteMutation(token, mut)
 	}
 	
 	log.Debug("DONE")

@@ -57,7 +57,7 @@ func (f *File) Open(truncate bool) os.Error {
 		}
 
 		var err os.Error
-		f.fd, err = os.OpenFile(f.datapath, flag, 0777)
+		f.fd, err = os.Open(f.datapath, flag, 0777)
 
 		return err
 	}

@@ -52,7 +52,7 @@ func (c Config) Save(path string) {
 		log.Error("Couldn't save config: %s", err)
 	}
 
-	fc, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	fc, err := os.Open(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	_, err = fc.Write(bytes)
 
 	if err != nil {
@@ -63,7 +63,7 @@ func (c Config) Save(path string) {
 func LoadConfig(path string) Config {
 	config := new(Config)
 
-	fc, err := os.OpenFile(path, os.O_RDONLY, 0777)
+	fc, err := os.Open(path, os.O_RDONLY, 0777)
 	if err != nil {
 		log.Error("Couldn't load config file: %s", err)
 	}

@@ -1,0 +1,65 @@
+package db;
+
+message Transaction {
+	optional uint64 id = 1;
+	optional uint32 origin = 2;
+
+	repeated TransactionBlock blocks = 10;
+	required uint32 master_block = 11;
+}
+
+message TransactionReturn {
+	optional TransactionError error = 1;
+	repeated TransactionValue returns = 2;
+}
+
+message TransactionError {
+	required uint32 id = 1;
+	required string message = 2;
+}
+
+message TransactionBlock {
+	required uint32 id = 1;
+	optional TransactionBlock parent = 2;
+
+	repeated TransactionOperation operations = 5;
+	repeated TransactionVariable variables = 6;
+}
+
+message TransactionVariable {
+	required uint32 block = 1;
+	required uint32 id = 2;
+	optional TransactionValue value = 3;
+}
+
+message TransactionValue {
+	required uint32 type = 1;
+	
+	optional int64 int_value = 5;
+	optional bool bool_value = 6;
+	optional float float_value = 7;
+	optional double double_value = 8;
+	optional string string_value = 9;
+	optional bytes bytes_value = 10;
+	optional string json_value = 11;
+}
+
+message TransactionObject {
+	optional TransactionValue value = 1;
+	optional TransactionVariable variable = 2;
+};
+
+message TransactionOperation {
+	required uint32	type = 1;
+
+	optional group Return = 2 {
+		repeated TransactionObject returns = 1;
+	};
+
+	optional group SetVariable = 3 {
+		required TransactionVariable variable = 1;
+		repeated TransactionObject accessors = 2;
+		required TransactionObject value = 3;
+	};
+
+}

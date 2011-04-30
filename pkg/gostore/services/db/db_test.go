@@ -4,8 +4,6 @@ import (
 	"testing"
 	"os"
 	"gostore/log"
-	"gostore/tools/buffer"
-	"fmt"
 )
 
 var (
@@ -109,31 +107,6 @@ func TestWalk(t *testing.T) {
 	}
 }
 
-func TestSerialize(t *testing.T) {
-	buf1 := buffer.New()
-	trx1 := NewTransaction(func (b *TransBlock) {
-		b.Set("test", "toto", 1)
-	})
-	err := trx1.Serialize(buf1)
-	if err != nil {
-		t.Errorf("Got an error serializing: %s", err)
-	}
-
-	buf1.Seek(0, 0)
-	trx2 := NewEmptyTransaction()
-	trx2.Unserialize(buf1)
-
-
-	buf2 := buffer.New()
-	err = trx2.Serialize(buf2)
-	if err != nil {
-		t.Errorf("Got an error serializing: %s", err)
-	}
-
-
-	fmt.Printf("%v\n", buf1.Bytes())
-	fmt.Printf("%v\n", buf2.Bytes())
-}
 
 
 

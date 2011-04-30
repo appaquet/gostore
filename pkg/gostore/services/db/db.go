@@ -2,11 +2,9 @@ package db
 
 import (
 	"strconv"
-	"gostore/tools/buffer"
 	"time"
 	"gostore/cluster"
-	"fmt"
-	"os"
+	proto "goprotobuf.googlecode.com/hg/proto"
 )
 
 
@@ -25,9 +23,9 @@ type Config struct {
 type Db struct {
 	root			*Root
 	config			Config
-	SegmentManager		*SegmentManager
-	MutationManager		*MutationManager
-	OperationManager	*OperationManager
+
+	segmentManager		*SegmentManager
+	viewstateManager	*ViewStateManager
 }
 
 func NewDb(config Config) *Db {
@@ -35,9 +33,8 @@ func NewDb(config Config) *Db {
 	db.config = config
 	db.root = newRoot()
 
-	db.SegmentManager = newSegmentManager(db, config.DataPath, 0, cluster.MAX_NODE_ID)
-	db.MutationManager = newMutationManager()
-	db.OperationManager = newOperationManager()
+	db.segmentManager = newSegmentManager(db, config.DataPath, 0, cluster.MAX_NODE_ID)
+	db.viewstateManager = newViewStateManager()
 
 	return db
 }
@@ -48,19 +45,43 @@ func (db *Db) getNextTransactionId() uint64 {
 	return uint64(time.Nanoseconds())
 }
 
-func (db *Db) Execute(trans *Transaction) (err os.Error) {
-	trans.id = db.getNextTransactionId()
+func (db *Db) Execute(trans *Transaction) (ret *TransactionReturn) {
+	bytes, err := proto.Marshal(trans)
+	if err != nil {
+		panic("Got an error marshalling")
+	}
 
-	buf := buffer.New()
-	err = trans.Serialize(buf)
-	fmt.Printf("%v\n", buf.Bytes())
+	newtrans := NewEmptyTransaction()
+	err = proto.Unmarshal(bytes, newtrans)
+	if err != nil {
+		panic("Got an error unmarshalling")
+	}
+	
 
-	return
+	newtrans.Id = proto.Uint64(db.getNextTransactionId())
+	vs := db.viewstateManager.NewViewState()
+
+	ret = newtrans.execute(vs)
+	bytes, err = proto.Marshal(ret)
+	if err != nil {
+		panic("Got an error marshalling")
+	}
+
+	newret := new(TransactionReturn)
+	err = proto.Unmarshal(bytes, newret)
+	if err != nil {
+		panic("Got an error unmarshalling")
+	}
+
+	return newret
+
+	/*trans.Id = proto.Uint64(db.getNextTransactionId())
+	vs := db.viewstateManager.NewViewState()
+	return trans.execute(vs)*/
 }
 
 
 
-// TODO: Return error if create is false
 func Walk(create bool, data *interface{}, container *interface{}, key []string) {
 	// we are at the end
 	if len(key) == 0 {

@@ -1,197 +1,218 @@
 package db
 
 import (
-	"gostore/tools/typedio"
-	"os"
+	proto "goprotobuf.googlecode.com/hg/proto"
+	"fmt"
+)
+
+const (
+	val_int = 5
+	val_bool = 6
+	val_float = 7
+	val_double = 8
+	val_string = 9
+	val_bytes = 10
+	val_json = 11
+	val_null = 12
 )
 
 
-type Transaction struct {
-	id      	uint64
-	mBlock		*TransBlock
-	bCount		uint16
-}
+//type Transaction struct {
+//	Id	*uint64	"PB(varint,1,opt,name=id)"
+//	Origin	*uint32	"PB(varint,2,opt,name=origin)"
+//	Blocks	[]*Block	"PB(bytes,10,rep,name=blocks)"
+//	MasterBlock	*uint32	"PB(varint,11,req,name=master_block)"
+//	XXX_unrecognized	[]byte
+//}
 
 func NewEmptyTransaction() (t *Transaction) {
 	t = new(Transaction)
-	t.mBlock = t.newBlock(true)
 	return t
 }
 
-func NewTransaction(cb func (b *TransBlock)) (t *Transaction) {
+func NewTransaction(cb func (b *TransactionBlock)) (t *Transaction) {
 	t = NewEmptyTransaction()
-	t.mBlock = t.newBlock(true)
-	cb(t.mBlock)
+	b := t.newBlock()
+	t.MasterBlock = b.Id
+	cb (b)
 	return t
 }
 
-func (t *Transaction) newBlock(assignId bool) *TransBlock {
-	b := new(TransBlock)
-	b.vars = make([]*TransVar,0)
-	b.ops = make([]Operation,0)
-
-	if assignId {
-		b.id = t.bCount
-		t.bCount++
-	}
-
-	return b
-}
-
-func (t *Transaction) Serialize(writer typedio.Writer) (err os.Error) {
-	err = writer.WriteUint64(t.id)				// transaction id
-	if err != nil {
-		return
-	}
-
-	err = writer.WriteUint16(t.bCount)			// block count
-	if err != nil {
-		return
-	}
-
-	err = t.mBlock.serialize(writer)			// master block
-	if err != nil {
-		return
-	}
-
+func (t *Transaction) newBlock() (b *TransactionBlock) {
+	b = new(TransactionBlock)
+	b.Id = proto.Uint32(uint32(len(t.Blocks)))
+	t.Blocks = append(t.Blocks, b)
 	return
 }
 
+func (t *Transaction) execute(vs *ViewState) (ret *TransactionReturn)  {
+	b := t.Blocks[int(*t.MasterBlock)]
+	return b.execute(t, vs)
+}
 
-func (t *Transaction) Unserialize(reader typedio.Reader) (err os.Error) {
-	t.id, err = reader.ReadUint64()				// transaction id
-	if err != nil {
-		return
+
+
+//type TransactionValue struct {
+//	Type	*uint32	"PB(varint,1,req,name=type)"
+//	IntValue	*int64	"PB(varint,5,opt,name=int_value)"
+//	BoolValue	*bool	"PB(varint,6,opt,name=bool_value)"
+//	FloatValue	*float32	"PB(fixed32,7,opt,name=float_value)"
+//	DoubleValue	*float64	"PB(fixed64,8,opt,name=double_value)"
+//	StringValue	*string	"PB(bytes,9,opt,name=string_value)"
+//	BytesValue	[]byte	"PB(bytes,10,opt,name=bytes_value)"
+//	JsonValue	*string	"PB(bytes,11,opt,name=json_value)"
+//	XXX_unrecognized	[]byte
+//}
+func (v *TransactionValue) String() string {
+	return fmt.Sprintf("%v", v.Value())
+}
+
+func (v *TransactionValue) Value() interface{} {
+	if v == nil {
+		return nil
 	}
 
-	t.bCount, err = reader.ReadUint16()			// block count
-	if err != nil {
-		return
+	switch *v.Type {
+	
+	case val_string:
+		return *v.StringValue
+
 	}
 
-	err = t.mBlock.unserialize(reader)			// master block
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-
-
-
-
-
-type TransVar struct {
-	block	uint16
-	id	uint16
-	value	interface{}
-}
-
-
-type TransBlock struct {
-	transaction	*Transaction
-	parent		*TransBlock
-
-	id		uint16
-	vars		[]*TransVar
-	ops		[]Operation
-}
-
-func (b *TransBlock) Set(data... interface{}) {
-	op := &OperationSet{data[0:len(data)-2], data[len(data)-1]}
-	b.ops = append(b.ops, op)
-}
-
-func (b *TransBlock) Get(data... interface{}) *TransVar {
 	return nil
 }
 
-func (b *TransBlock) NewVar() *TransVar {
-	vr := &TransVar{ id: uint16(len(b.vars)), block: b.id, value: nil }
-	b.vars = append(b.vars, vr)
-	return vr
-}
+func interface2value(data interface{}) *TransactionValue {
+	switch f := data.(type) {
 
-func (b *TransBlock) serializeVariable(v *TransVar, writer typedio.Writer) (err os.Error) {
-	err = writer.WriteUint16(v.block)		// block
-	if err != nil {
-		return
-	}
-
-	err = writer.WriteUint16(v.id)			// id
-
-	return
-}
-
-func (b *TransBlock) unserializeVariable(reader typedio.Reader) (v *TransVar, err os.Error) {
-	v = &TransVar{0,0,nil}
-
-	v.block, err = reader.ReadUint16()		// block
-	if err != nil {
-		return
-	}
-
-	v.id, err = reader.ReadUint16()			// id
-	b.vars[v.id] = v
-
-	return
-}
-
-
-func (b *TransBlock) serialize(writer typedio.Writer) (err os.Error) {
-	err = writer.WriteUint16(b.id)				// block id
-	if err != nil {
-		return
-	}
-
-	err = writer.WriteUint16(uint16(len(b.vars)))		// variable count
-	if err != nil {
-		return
-	}
-
-	err = writer.WriteUint16(uint16(len(b.ops)))		// operation count
-	if err != nil {
-		return
-	}
-
-	for _, op := range b.ops {
-		// TODO: Write op id
-
-		err = op.serialize(writer)			// operation
-		if err != nil {
-			return
+	case string:
+		return &TransactionValue{
+			Type: proto.Uint32(val_string),
+			StringValue: proto.String(f),
 		}
 	}
 
-	return
+	return &TransactionValue {
+		Type: proto.Uint32(val_null),
+	}
+}
+
+func interface2object(data interface{}) *TransactionObject {
+	if v, ok := data.(*TransactionVariable); ok {
+		return &TransactionObject{
+			Variable: v,
+		}
+	} 
+
+	return &TransactionObject{
+		Value: interface2value(data),
+	}
 }
 
 
-func (b *TransBlock) unserialize(reader typedio.Reader) (err os.Error) {
-	b.id, err = reader.ReadUint16()				// block id
-	if err != nil {
-		return
+
+
+
+
+func (b *TransactionBlock) SetVar(variable *TransactionVariable, data... interface{}) {
+	if len(data) == 0 {
+		panic("You must specify at least a value")	
+	}
+	if variable == nil {
+		panic("Variable must not be null")	
 	}
 
-	var nbVars uint16
-	nbVars, err = reader.ReadUint16()			// variable count
-	if err != nil {
-		return
-	}
-	b.vars = make([]*TransVar, nbVars)
 
-	var nbOps uint16
-	nbOps, err = reader.ReadUint16()			// operation count
-	if err != nil {
-		return
+	acs := make([]*TransactionObject, len(data)-1)
+	for i:=0; i<len(data)-1; i++ {
+		acs[i] = interface2object(data[i])
 	}
-	//TODO: b.ops = make([]Operation, nbOps)
 
-	for i:=uint16(0); i<nbOps; i++ {
-		
+	val := interface2object(data[len(data)-1])
+
+	op := &TransactionOperation{
+		Type: proto.Uint32(op_setvar),
+		Setvariable: &TransactionOperation_SetVariable {
+			Variable: variable,
+			Accessors: acs,
+			Value: val,
+		},
+	}
+	b.addOperation(op)
+}
+
+func (b *TransactionBlock) Set(data ...interface{}) {
+}
+
+func (b *TransactionBlock) Return(data... interface{}) {
+	op := &TransactionOperation{
+		Type: proto.Uint32(op_return),
+		Return: &TransactionOperation_Return{},
+	}
+	op.Return.Returns = make([]*TransactionObject, len(data))
+
+	for i, obj := range data {
+		if vr, ok := obj.(*TransactionVariable); ok {
+			op.Return.Returns[i] = &TransactionObject{
+				Variable: vr,
+			}
+		} else {
+			val := interface2value(obj)
+			if val == nil {
+				panic("Unknown return object")
+			}
+
+			op.Return.Returns[i] = &TransactionObject{
+				Value: val,
+			}
+		}
+	}
+
+	b.addOperation(op)
+}
+
+func (b *TransactionBlock) Get(data... interface{}) *TransactionVariable {
+	return nil
+}
+
+func (b *TransactionBlock) NewVar() *TransactionVariable {
+	v := new(TransactionVariable)
+
+	// TODO: we should only add variables that have values
+	v.Block = b.Id
+	v.Id = proto.Uint32(uint32(len(b.Variables)))
+	b.Variables = append(b.Variables, v)
+	return v
+}
+
+func (b *TransactionBlock) getRealVar(v *TransactionVariable) *TransactionVariable {
+	// TODO: check if it's the right block. Else, pass to the parent
+	return b.Variables[*v.Id]
+}
+
+
+func (b *TransactionBlock) addOperation(op *TransactionOperation) {
+	b.Operations = append(b.Operations, op)
+}
+
+func (b *TransactionBlock) execute(t *Transaction, vs *ViewState) (ret *TransactionReturn) {
+	ret = new(TransactionReturn)
+
+	for _, op := range b.Operations {
+		switch *op.Type {
+
+		case op_setvar:
+			ret.Error = op.Setvariable.execute(t, b, vs)
+			if ret.Error != nil {
+				return
+			}
+
+		case op_return:
+			return op.Return.execute(t, b, vs)
+
+		}
+
 	}
 
 	return
 }
-

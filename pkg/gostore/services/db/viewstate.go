@@ -15,18 +15,26 @@ func newViewStateManager() *ViewStateManager {
 
 func (m *ViewStateManager) NewViewState() *ViewState {
 	vs := new(ViewState)
-	
-	for _, ok := m.vs[pos]; !ok {
-		pos++
+
+	found := false
+	for !found {
+		if _, ok := m.vs[m.pos]; !ok {
+			found = true
+		} else {
+			m.pos++
+		}
 	}
 
-	m.vs[pos] = vs
-	vs.id = pos
+	m.vs[m.pos] = vs
+	vs.id = m.pos
 	return vs
 }
 
 
 type ViewState struct {
 	id	uint32
+	db	*Db
 }
+
+
 

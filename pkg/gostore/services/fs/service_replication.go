@@ -38,7 +38,7 @@ func (fss *FsService) replicationWatcher() {
 					// TODO: Use config to get temp path
 					tempfile := fmt.Sprintf("%s/%d.%d.%d.data", os.TempDir(), path.Hash(), time.Nanoseconds(), localheader.header.Version)
 
-					fd, err := os.OpenFile(tempfile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
+					fd, err := os.Open(tempfile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
 					if err == nil {
 						_, err = fss.Read(path, 0, -1, 0, fd, nil)
 						fd.Close()
