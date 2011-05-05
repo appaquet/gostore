@@ -80,7 +80,6 @@ func StartNode(id int) {
 	rings[1].Id = 1
 	rings[1].ReplicationFactor = 3
 
-
 	datadir := fmt.Sprintf("data/%d", id)
 
 	conf := new(gostore.Config)
@@ -123,7 +122,7 @@ func StopNode(id int) {
 func WaitOnline(id, maxWait int) os.Error {
 	start := time.Seconds()
 	for tc.nodes[id].Cluster.MyNode.Status != cluster.Status_Online {
-		if time.Seconds() - start > int64(maxWait) {
+		if time.Seconds()-start > int64(maxWait) {
 			return os.NewError("Maximum wait time exceed")
 		}
 
@@ -132,6 +131,3 @@ func WaitOnline(id, maxWait int) os.Error {
 
 	return nil
 }
-
-
-

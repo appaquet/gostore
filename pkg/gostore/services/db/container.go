@@ -5,50 +5,39 @@ import (
 )
 
 
-type Root struct {
-	containers map[string]Container
+type container struct {
+	objects map[string]object
 }
 
-func newRoot() *Root {
-	r := new(Root)
-	r.containers = make(map[string]Container)
-	return r
+func newContainer() container {
+	c := container{
+		objects: make(map[string]object),
+	}
+	return c
 }
 
-func (r *Root) String() string {
-	return fmt.Sprintf("Root[%s]", r.containers)
-}
-
-
-type Container struct {
-	objects map[string]ContainerObject
-}
-
-func (c *Container) String() string {
-	return fmt.Sprintf("Container[%s]", c.objects)
+func (c *container) String() string {
+	return fmt.Sprintf("container[%s]", c.objects)
 }
 
 
+type object struct {
+	flags    byte
+	segment  uint16
+	position uint32
 
-
-
-type ContainerObject struct {
-	flags		byte
-	segment		uint16
-	position	uint32
-
-	data		interface{}
+	data interface{}
 }
 
 const (
 	obj_flag_deleted byte = 0x01
 )
 
-func (o *ContainerObject) String() string {
-	return fmt.Sprintf("ContainerObject[seg=%d, pos=%d, data=%v]", o.segment, o.position, o.data)
+func (o *object) String() string {
+	return fmt.Sprintf("object[seg=%d, pos=%d, data=%v]", o.segment, o.position, o.data)
 }
 
-func (o *ContainerObject) isFlag(flag byte) bool {
+func (o *object) isFlag(flag byte) bool {
 	if o.flags&flag == flag {
 		return true
 	}
@@ -56,11 +45,10 @@ func (o *ContainerObject) isFlag(flag byte) bool {
 	return false
 }
 
-func (o *ContainerObject) setFlag(flag byte, value bool) {
+func (o *object) setFlag(flag byte, value bool) {
 	if value {
 		o.flags = o.flags | flag
 	} else {
 		o.flags = o.flags | ^flag
 	}
 }
-

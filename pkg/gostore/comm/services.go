@@ -86,7 +86,7 @@ type serviceWrapper struct {
 }
 
 func (wrapper *serviceWrapper) registerFunctions() {
-	typ := reflect.Typeof(wrapper.service)
+	typ := reflect.TypeOf(wrapper.service)
 
 	for m := 0; m < typ.NumMethod(); m++ {
 		method := typ.Method(m)
@@ -115,8 +115,8 @@ func (wrapper *serviceWrapper) callFunction(id byte, message *Message) (handled 
 	method := wrapper.id2method[id-RESERVED_FUNCTIONS]
 
 	if method != nil {
-		rService := reflect.NewValue(wrapper.service)
-		rMessage := reflect.NewValue(message)
+		rService := reflect.ValueOf(wrapper.service)
+		rMessage := reflect.ValueOf(message)
 		method.Func.Call([]reflect.Value{rService, rMessage})
 		return true
 	}

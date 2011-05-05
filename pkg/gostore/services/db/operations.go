@@ -1,24 +1,48 @@
 package db
 
-const (
-	op_return = 2
-	op_setvar = 3
+import (
+	"os"
+	proto "goprotobuf.googlecode.com/hg/proto"
 )
 
-func (op *TransactionOperation_SetVariable) execute(t *Transaction, b *TransactionBlock, vs *ViewState) (err *TransactionError) {
-	// TODO: Walk!
-	v := b.getRealVar(op.Variable)
-	if op.Value.Value != nil{
-		v.Value = op.Value.Value	
-	} else {
-		valvar := b.getRealVar(op.Value.Variable)
-		v.Value = valvar.Value
-	}
+const (
+	op_return = 2
+	op_set    = 3
+)
 
-	return
+type operation interface {
+	 executeTransaction(t *Transaction, b *TransactionBlock, vs *viewState) (ret *TransactionReturn)
 }
 
-func (op *TransactionOperation_Return) execute(t *Transaction, b *TransactionBlock, vs *ViewState) (ret *TransactionReturn) {
+
+func id2operation(id uint16) operation {
+	switch (id) {
+	case op_return:
+		return &TransactionOperation_Return{}
+	case op_set:
+		return &TransactionOperation_Set{}
+	}
+	return nil
+}
+
+func operation2id(op operation) uint16 {
+	switch op.(type) {
+	case *TransactionOperation_Return:
+		return op_return
+	case *TransactionOperation_Set:
+		return op_set
+	}
+	return 0
+}
+
+
+
+
+
+//
+// Return
+//
+func (op *TransactionOperation_Return) executeTransaction(t *Transaction, b *TransactionBlock, vs *viewState) (ret *TransactionReturn) {
 	ret = new(TransactionReturn)
 	ret.Returns = make([]*TransactionValue, len(op.Returns))
 
@@ -27,10 +51,61 @@ func (op *TransactionOperation_Return) execute(t *Transaction, b *TransactionBlo
 			ret.Returns[i] = obj.Value
 		} else {
 			v := b.getRealVar(obj.Variable)
-			ret.Returns[i] = v.Value
+			if v.Value != nil {
+				ret.Returns[i] = v.Value
+			} else {
+				ret.Returns[i] = interface2value(nil)
+			}
 		}
 	}
 
 	return
 
+}
+
+// 
+// Set
+//
+func (op *TransactionOperation_Set) executeTransaction(t *Transaction, b *TransactionBlock, vs *viewState) (ret *TransactionReturn) {
+	// TODO: Walk!
+
+	if op.Destination.Variable != nil {
+		v := b.getRealVar(op.Destination.Variable.Variable)
+		if op.Value.Value != nil {
+			v.Value = op.Value.Value
+		} else {
+			valvar := b.getRealVar(op.Value.Variable)
+			v.Value = valvar.Value
+		}
+
+	} else if op.Destination.Object != nil {
+		// make sure we don't use variables anymore
+		for _, ac := range op.Accessors {
+			ac.MakeAbsoluteValue(b)
+		}
+		op.Value.MakeAbsoluteValue(b)
+
+		containerName := op.Destination.Object.Container.Value().(string)
+		key := op.Destination.Object.Key.Value().(string)
+
+		osErr := vs.mutateObject(containerName, key, op)
+		if osErr != nil {
+			return &TransactionReturn{
+				Error: &TransactionError{
+					Id: proto.Uint32(0), // TODO: ERRNO
+					Message: proto.String(osErr.String()),
+				},
+			}
+		}
+	} else {
+		// TODO: err = incomplete
+	}
+
+	return
+}
+
+func (op *TransactionOperation_Set) mutateObject(vs *viewState, obj *object) (err os.Error) {
+	obj.data = op.Value.Value.Value()
+
+	return
 }

@@ -26,17 +26,17 @@ type ClusterService struct {
 	comm      *comm.Comm
 	serviceId byte
 
-	cluster		*cluster.Cluster
-	clusterMutex	*sync.Mutex
+	cluster      *cluster.Cluster
+	clusterMutex *sync.Mutex
 
 	// peristence
 	commitlog      *commitlog.CommitLog
 	clusterVersion int64
 	diskVerson     int64
 
-	dataDir		string
-	clsDataPath	string
-	masterRing	byte
+	dataDir     string
+	clsDataPath string
+	masterRing  byte
 
 	state byte
 
@@ -68,7 +68,6 @@ func NewClusterService(comm *comm.Comm, config gostore.Config, sconfig gostore.C
 	} else {
 		log.Fatal("CS: Config 'MasterRing' must be specified")
 	}
-
 
 	// peristence
 	cs.commitlog = commitlog.New(cs.dataDir)
@@ -115,8 +114,6 @@ func (cs *ClusterService) Stop() {
 	cs.state = state_offline
 	cs.saveCluster()
 }
-
-
 
 
 func (cs *ClusterService) ContactMaster() {
@@ -176,13 +173,3 @@ func (cs *ClusterService) RemoteContactMaster(msg *comm.Message) {
 		}
 	}
 }
-
-
-
-
-
-
-
-
-
-

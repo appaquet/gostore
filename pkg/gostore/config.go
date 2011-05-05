@@ -11,8 +11,8 @@ import (
 type Config struct {
 	Services []ConfigService
 
-	Rings       []ConfigRing
-	GlobalRing  uint8
+	Rings      []ConfigRing
+	GlobalRing uint8
 
 	Nodes       []ConfigNode
 	CurrentNode uint16
@@ -52,7 +52,7 @@ func (c Config) Save(path string) {
 		log.Error("Couldn't save config: %s", err)
 	}
 
-	fc, err := os.Open(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	fc, err := os.Create(path)
 	_, err = fc.Write(bytes)
 
 	if err != nil {
@@ -63,7 +63,7 @@ func (c Config) Save(path string) {
 func LoadConfig(path string) Config {
 	config := new(Config)
 
-	fc, err := os.Open(path, os.O_RDONLY, 0777)
+	fc, err := os.Open(path)
 	if err != nil {
 		log.Error("Couldn't load config file: %s", err)
 	}
@@ -81,7 +81,6 @@ func LoadConfig(path string) Config {
 		}
 	}
 
-	
 	err = json.Unmarshal([]byte(strFinConfig), config)
 
 	if err != nil {

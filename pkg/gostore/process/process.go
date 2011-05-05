@@ -15,8 +15,8 @@ type Process struct {
 	Cluster *cluster.Cluster
 	Sc      *comm.Comm
 
-	Fss	*fs.FsService
-	Cls		*cls.ClusterService
+	Fss *fs.FsService
+	Cls *cls.ClusterService
 }
 
 func NewProcess(config gostore.Config) *Process {
@@ -77,10 +77,8 @@ func NewProcess(config gostore.Config) *Process {
 		}
 	}
 
-
 	// boot services
 	proc.Sc.BootServices()
 
 	return proc
 }
-

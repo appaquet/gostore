@@ -13,18 +13,18 @@ import (
 )
 
 var (
-	servers		[]string
-	data		[]byte
+	servers []string
+	data    []byte
 
-	mutex		*sync.Mutex
-	requestsSum	int
-	elapsedSum	float64
+	mutex       *sync.Mutex
+	requestsSum int
+	elapsedSum  float64
 
-	end			bool
-	trackerEnd  chan bool = make(chan bool)
+	end        bool
+	trackerEnd chan bool = make(chan bool)
 
-	startTime	int64
-	elapsedTime	float64
+	startTime   int64
+	elapsedTime float64
 )
 
 func main() {
@@ -41,15 +41,13 @@ func main() {
 	fmt.Printf("Generating data %d bytes of random data... ", *sizeFlag)
 
 	data = make([]byte, *sizeFlag)
-	for i:=0 ; i < *sizeFlag; i++ {
+	for i := 0; i < *sizeFlag; i++ {
 		data[i] = byte(rand.Intn(255))
 	}
 	fmt.Printf("Data generated!\n")
 
-
 	// parsing servers
 	servers = strings.Split(*serversFlag, ";", -1)
-
 
 	// stats tracker
 	mutex = new(sync.Mutex)
@@ -60,7 +58,7 @@ func main() {
 	startTime = time.Nanoseconds()
 	reqPerThread := *requestsFlag / *concurrencyFlag
 	for i := 0; i < *concurrencyFlag; i++ {
-		switch (*operationFlag) {
+		switch *operationFlag {
 		case "write":
 			go writeTest(i*1000, reqPerThread, cs)
 		default:
@@ -72,7 +70,7 @@ func main() {
 		<-cs
 	}
 
-	elapsedTime = float64(time.Nanoseconds() - startTime) / 1000000
+	elapsedTime = float64(time.Nanoseconds()-startTime) / 1000000
 
 	end = true
 
@@ -82,7 +80,6 @@ func main() {
 func tracker() {
 	var lastRequests int = 0
 	var lastSum float64 = 0
-
 
 	fmt.Printf("\n--------------- TESTING ---------------- \n")
 
@@ -96,24 +93,22 @@ func tracker() {
 		lastSum = elapsedSum
 		mutex.Unlock()
 
-		fmt.Printf("1 second: %d reqs, %f ms/s avg \n", diffRequests, diffSum / float64(diffRequests))
+		fmt.Printf("1 second: %d reqs, %f ms/s avg \n", diffRequests, diffSum/float64(diffRequests))
 	}
-
 
 	fmt.Printf("\n--------------- SUMMARY ---------------- \n")
 
 	fmt.Printf("Execution time: %f ms\n", elapsedTime)
 	fmt.Printf("Total requests count: %d\n", requestsSum)
 
-	fmt.Printf("Requests per second: %f\n", float64(requestsSum) / elapsedTime * 1000)
-	fmt.Printf("Avg time per requests: %f\n", elapsedSum / float64(requestsSum))
+	fmt.Printf("Requests per second: %f\n", float64(requestsSum)/elapsedTime*1000)
+	fmt.Printf("Avg time per requests: %f\n", elapsedSum/float64(requestsSum))
 
 	trackerEnd <- true
 }
 
 func writeTest(start int, requests int, end chan bool) {
 	for i := 0; i < requests; i++ {
-
 
 		server := randomServer()
 		url := fmt.Sprintf("http://%s/home%d/nitro%d?size=%d", server, start+i, start+requests-i, len(data))
@@ -129,7 +124,7 @@ func writeTest(start int, requests int, end chan bool) {
 		elapsed := time.Nanoseconds() - startTime
 
 		mutex.Lock()
-		elapsedSum += float64(elapsed)/1000000
+		elapsedSum += float64(elapsed) / 1000000
 		requestsSum++
 		mutex.Unlock()
 	}
@@ -151,7 +146,7 @@ func readTest(start int, requests int, end chan bool) {
 		elapsed := time.Nanoseconds() - startTime
 
 		mutex.Lock()
-		elapsedSum += float64(elapsed)/1000000
+		elapsedSum += float64(elapsed) / 1000000
 		requestsSum++
 		mutex.Unlock()
 	}

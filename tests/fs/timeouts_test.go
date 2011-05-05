@@ -237,7 +237,6 @@ func TestFsHeaderNetworkTimeout(t *testing.T) {
 			}
 		})
 
-
 	// Test one timeout + 1 retry, no error
 	timeoutTest(1500*4, func() {
 		// wait 50ms and change addr of the remote node

@@ -41,7 +41,6 @@ message TransactionValue {
 	optional double double_value = 8;
 	optional string string_value = 9;
 	optional bytes bytes_value = 10;
-	optional string json_value = 11;
 }
 
 message TransactionObject {
@@ -56,10 +55,20 @@ message TransactionOperation {
 		repeated TransactionObject returns = 1;
 	};
 
-	optional group SetVariable = 3 {
-		required TransactionVariable variable = 1;
+	optional group Set = 3 {
+		required TransactionOperationDestination destination = 1;
 		repeated TransactionObject accessors = 2;
 		required TransactionObject value = 3;
 	};
 
+}
+
+message TransactionOperationDestination {
+	optional group Variable = 1 {
+		required TransactionVariable variable = 1;
+	};
+	optional group Object = 2 {
+		required TransactionValue container = 1;
+		required TransactionValue key = 2;
+	};
 }

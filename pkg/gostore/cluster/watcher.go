@@ -60,5 +60,3 @@ func (wn *WatcherNotifier) NotifyNodeLeaving(node *Node) {
 
 func (wn *WatcherNotifier) NotifyNodeLeaved(node *Node) {
 }
-
-

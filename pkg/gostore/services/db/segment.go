@@ -21,8 +21,8 @@ const (
 type Token uint16
 
 type TokenRange struct {
-	from	Token
-	to	Token
+	from Token
+	to   Token
 }
 
 func (r *TokenRange) Length() int {
@@ -37,135 +37,46 @@ func (r *TokenRange) IsWithin(token Token) bool {
 	return false
 }
 
-type SegmentCollection struct {
-	segments	[]*Segment
-}
-
-func newSegmentCollection() *SegmentCollection {
-	col := new(SegmentCollection)
-	col.segments = make([]*Segment, 0)
-	return col
-}
-
-func (c *SegmentCollection) GetSegment(token Token) *Segment {
-	var candCurrent *Segment
-	var cand *Segment
-	for _, seg := range c.segments {
-		if seg.tokens.IsWithin(token) {
-			if seg.current {
-				candCurrent = seg
-			}
-			cand = seg
-		}
-	}
-
-	// return a current segment first (last)
-	if candCurrent != nil {
-		return candCurrent
-	}
-	return cand
-}
-
-func (c *SegmentCollection) AddSegment(newseg *Segment) {
-	// unset as current all segments that overlapse with this new segment
-	for _, seg := range c.segments {
-		if (newseg.tokens.from >= seg.tokens.from && newseg.tokens.from <= seg.tokens.to) || 
-			(newseg.tokens.to >= seg.tokens.from && newseg.tokens.to <= seg.tokens.to) {
-
-			log.Debug("New segment %s overlapse %s. Closing overlapsed!", newseg, seg)
-			seg.current = false
-
-			// TODO: add a "way" parameter so we add to front or back
-			seg.nextSegments.segments = append(seg.nextSegments.segments, newseg)
-			newseg.prevSegments.segments = append(newseg.prevSegments.segments, seg)
-		}
-	}
-
-	c.segments = append(c.segments, newseg)
-	c.cleanup()
-}
-
 
 //
-// Remove all not current segments that aren't covering any part of the range anymore
+// Segments manager of the db
 //
-func (c *SegmentCollection) cleanup() {
-	log.Debug("Cleaning the segment collections...")
-	newSegs := make([]*Segment, 0)
+type segmentManager struct {
+	db *Db
 
-	for o:=0; o<len(c.segments); o++ {
-		oSeg := c.segments[o]
+	id2segments   []*segment
+	nextSegId     uint16
+	timelineStart *segmentCollection
+	timelineEnd   *segmentCollection
 
-		if !oSeg.current {
-			covRange := oSeg.tokens
-			useless := false
+	dataDir string
+	tokens  TokenRange
+}
 
-			// iterate on all current segments, remove ranges covered from other segments from covRange
-			for i:=0; i<len(c.segments) && !useless; i++ {
-				iSeg := c.segments[i]
-
-				if i != o && iSeg.tokens.IsWithin(covRange.from) && iSeg.position_start > oSeg.position_start {
-					covRange = TokenRange{iSeg.tokens.to, covRange.to}
-				}
-
-
-				// as soon as the coverage range is <= 0, we know that this range is useless
-				if covRange.Length() <= 0 {
-					useless = true
-					log.Debug("Segment %s now useless. Removing it.", oSeg)
-				}
-			}
-
-			// only add the segment to the new array if it isn't useless
-			if !useless {
-				newSegs = append(newSegs, oSeg)
-			}
-
-		} else {
-			// if its a current segment, add it
-			newSegs = append(newSegs, oSeg)
-		}
+func newSegmentManager(db *Db, dataDir string, token_before, token Token) *segmentManager {
+	segManager := &segmentManager{
+		db: db,
+		id2segments: make([]*segment, cluster.MAX_NODE_ID),
+		timelineStart: newSegmentCollection(),
+		timelineEnd: newSegmentCollection(),
+		dataDir: dataDir,
+		tokens: TokenRange{token_before, token},
 	}
-
-	c.segments = newSegs
-}
-
-
-type SegmentManager struct {
-	db		*Db
-	id2segments	[]*Segment
-	timelineStart	*SegmentCollection
-	timelineEnd	*SegmentCollection
-
-	dataDir		string
-	tokens		TokenRange
-}
-
-func newSegmentManager(db *Db, dataDir string, token_before, token Token) *SegmentManager {
-	segManager := new(SegmentManager)
-
-	segManager.db = db
-	segManager.id2segments = make([]*Segment, cluster.MAX_NODE_ID)
-	segManager.timelineStart = newSegmentCollection()
-	segManager.timelineEnd = newSegmentCollection()
-
-	segManager.dataDir = dataDir
-	segManager.tokens = TokenRange{token_before, token}
 
 	// TODO: Scan directory, create all segments
 	// TODO: Sort them by start position
 	// TODO: Create the timeline
-	
+
 
 	return segManager
 }
 
-func (m *SegmentManager) GetCurrentSegment(token Token) *Segment {
+func (m *segmentManager) getCurrentSegment(token Token) *segment {
 	if !m.tokens.IsWithin(token) {
 		log.Fatal("Got a token not within range: got %d, range from %d to %d", token, m.tokens.from, m.tokens.to)
 	}
 
-	seg := m.timelineEnd.GetSegment(token)
+	seg := m.timelineEnd.getSegment(token)
 
 	// no current segment found, create one
 	if seg == nil || !seg.current {
@@ -199,48 +110,158 @@ func (m *SegmentManager) GetCurrentSegment(token Token) *Segment {
 			pos = seg.position_end
 		}
 
-
 		log.Info("Creating a new segment for tokens %d to %d @ %d", chunk.from, chunk.to, pos)
 		seg = createSegment(m.dataDir, chunk.from, chunk.to, pos)
-		m.timelineEnd.AddSegment(seg) // TODO: Generate segment id and assign it
-	}
+		m.timelineEnd.addSegment(seg)
 
+		// asign an id
+		// TODO: Make sure we don't collide
+		seg.id = m.nextSegId
+		m.id2segments[seg.id] = seg
+		m.nextSegId++
+	}
 
 	return seg
 }
 
-func (m *SegmentManager) WriteMutation(token Token, mutation Mutation) {
-	entry := new(SegmentEntry)
-	entry.token = token
-	entry.mutation = mutation
+func (m *segmentManager) writeMutation(token Token, mutation *mutation) (segment *segment, entry *segmentEntry) {
+	segment = m.getCurrentSegment(token)
 
-	entry.mutid = mutations.GetId(mutation)
+	entry = &segmentEntry{
+		segment: segment,
+		token: token,
+		mutation: mutation,
+	}
 
-	segment := m.GetCurrentSegment(token)
-	segment.Write(entry)
+	// write the entry
+	segment.write(entry)
 
+	// check if the segment can still be written after
 	size := segment.position_end - segment.position_start
 	if size >= uint64(SEG_MAX_SIZE) {
 		segment.current = false
 		log.Info("Segment %s too big for a new entry. Rotating!", segment)
 	}
+
+	return
 }
 
-type Segment struct {
-	tokens		TokenRange
-	nextSegments	*SegmentCollection
-	prevSegments	*SegmentCollection
 
-	position_start	uint64	// absolute start position
-	position_end	uint64	// absolute (exclusive) end of segment (ex: start=0, size=10, end=10)
-
-	fd		*os.File	
-	typedFd		typedio.ReadWriter
-	current		bool
+//
+// Collection of segments
+//
+type segmentCollection struct {
+	segments []*segment
 }
 
-func openSegment(path string) *Segment {
-	seg := new(Segment)
+func newSegmentCollection() *segmentCollection {
+	col := new(segmentCollection)
+	col.segments = make([]*segment, 0)
+	return col
+}
+
+func (c *segmentCollection) getSegment(token Token) *segment {
+	var candCurrent *segment
+	var cand *segment
+	for _, seg := range c.segments {
+		if seg.tokens.IsWithin(token) {
+			if seg.current {
+				candCurrent = seg
+			}
+			cand = seg
+		}
+	}
+
+	// return a current segment first (last)
+	if candCurrent != nil {
+		return candCurrent
+	}
+	return cand
+}
+
+func (c *segmentCollection) addSegment(newseg *segment) {
+	// unset as current all segments that overlapse with this new segment
+	for _, seg := range c.segments {
+		if (newseg.tokens.from >= seg.tokens.from && newseg.tokens.from <= seg.tokens.to) ||
+			(newseg.tokens.to >= seg.tokens.from && newseg.tokens.to <= seg.tokens.to) {
+
+			log.Debug("New segment %s overlapse %s. Closing overlapsed!", newseg, seg)
+			seg.current = false
+
+			// TODO: add a "way" parameter so we add to front or back
+			seg.nextSegments.segments = append(seg.nextSegments.segments, newseg)
+			newseg.prevSegments.segments = append(newseg.prevSegments.segments, seg)
+		}
+	}
+
+	c.segments = append(c.segments, newseg)
+	c.cleanup()
+}
+
+
+//
+// Remove all not current segments that aren't covering any part of the range anymore
+//
+func (c *segmentCollection) cleanup() {
+	log.Debug("Cleaning the segment collections...")
+	newSegs := make([]*segment, 0)
+
+	for o := 0; o < len(c.segments); o++ {
+		oSeg := c.segments[o]
+
+		if !oSeg.current {
+			covRange := oSeg.tokens
+			useless := false
+
+			// iterate on all current segments, remove ranges covered from other segments from covRange
+			for i := 0; i < len(c.segments) && !useless; i++ {
+				iSeg := c.segments[i]
+
+				if i != o && iSeg.tokens.IsWithin(covRange.from) && iSeg.position_start > oSeg.position_start {
+					covRange = TokenRange{iSeg.tokens.to, covRange.to}
+				}
+
+				// as soon as the coverage range is <= 0, we know that this range is useless
+				if covRange.Length() <= 0 {
+					useless = true
+					log.Debug("Segment %s now useless. Removing it.", oSeg)
+				}
+			}
+
+			// only add the segment to the new array if it isn't useless
+			if !useless {
+				newSegs = append(newSegs, oSeg)
+			}
+
+		} else {
+			// if its a current segment, add it
+			newSegs = append(newSegs, oSeg)
+		}
+	}
+
+	c.segments = newSegs
+}
+
+
+//
+// Segment (file) in which entries are written sequentially
+//
+type segment struct {
+	id           uint16
+	tokens       TokenRange
+	nextSegments *segmentCollection
+	prevSegments *segmentCollection
+
+	position_start uint64 // absolute start position
+	position_end   uint64 // absolute (exclusive) end of segment (ex: start=0, size=10, end=10)
+
+	fd      *os.File
+	typedFd typedio.ReadWriter
+	current bool
+}
+
+func openSegment(path string) *segment {
+	seg := new(segment)
 	seg.nextSegments = newSegmentCollection()
 	seg.prevSegments = newSegmentCollection()
 
@@ -258,18 +279,18 @@ func openSegment(path string) *Segment {
 	}
 	seg.tokens = TokenRange{from, to}
 
-	seg.fd, err = os.Open(path, os.O_RDWR | os.O_CREATE, 0777)
+	seg.fd, err = os.Create(path)
 	if err != nil {
 		log.Fatal("Couldn't open segment %s: %s", path, err)
 	}
 	seg.typedFd = typedio.NewReadWriter(seg.fd)
-	seg.position_end = seg.position_start + uint64(stat.Size) 
+	seg.position_end = seg.position_start + uint64(stat.Size)
 
 	return seg
 }
 
-func createSegment(dataDir string, token_from, token_to Token, position uint64) *Segment {
-	seg := new(Segment)
+func createSegment(dataDir string, token_from, token_to Token, position uint64) *segment {
+	seg := new(segment)
 	seg.nextSegments = newSegmentCollection()
 	seg.prevSegments = newSegmentCollection()
 	seg.tokens = TokenRange{token_from, token_to}
@@ -279,7 +300,7 @@ func createSegment(dataDir string, token_from, token_to Token, position uint64) 
 	var err os.Error
 
 	filePath := fmt.Sprintf("%s/%04X_%04X_%016X.seg", dataDir, token_from, token_to, position)
-	seg.fd, err = os.Open(filePath, os.O_RDWR | os.O_CREATE, 0777)
+	seg.fd, err = os.Create(filePath)
 	if err != nil {
 		log.Fatal("Couldn't open segment %s: %s", filePath, err)
 	}
@@ -289,49 +310,51 @@ func createSegment(dataDir string, token_from, token_to Token, position uint64) 
 	return seg
 }
 
-func (s *Segment) Write(entry *SegmentEntry) {
-	s.fd.Seek(int64(s.position_end - s.position_start), 0)
+func (s *segment) write(entry *segmentEntry) {
+	s.fd.Seek(int64(s.position_end-s.position_start), 0)
 	entry.position = s.position_end
-	entry.Serialize(s.typedFd)
-	s.position_end += uint64(entry.TotalSize())
+	entry.serialize(s.typedFd)
+	s.position_end += uint64(entry.totalSize())
 }
 
-func (s *Segment) String() string {
+func (s *segment) String() string {
 	size := s.position_end - s.position_start
 	return fmt.Sprintf("Segment[from=%d, to=%d, current=%v, pos_start=%d, pos_end=%d, size=%d]", s.tokens.from, s.tokens.to, s.current, s.position_start, s.position_end, size)
 }
 
 
-type SegmentEntry struct {
-	position	uint64	
-	token		Token
-	mutsize		uint32
-	mutid		uint16
-	mutation	Mutation
+type segmentEntry struct {
+	segment	 *segment
+
+	position uint64
+	token    Token
+	mutsize  uint32
+	mutation *mutation
 }
 
-func (e *SegmentEntry) Serialize(writer typedio.Writer) {
+func (e *segmentEntry) serialize(writer typedio.Writer) {
 	// TODO: Check for errors
-	writer.WriteUint64(e.position) 				// position
+	writer.WriteUint64(e.position) // position
 
 	buf := buffer.New()
-	
-	e.mutation.Serialize(buf)
+
+	e.mutation.serialize(buf) // TODO: Handle error
 	e.mutsize = uint32(buf.Size)
 
-	writer.WriteUint16(uint16(e.token))			// token
-	writer.WriteUint32(e.mutsize)				// size of mutation
-	writer.WriteUint16(e.mutid)				// mutation id
+	writer.WriteUint16(uint16(e.token)) // token
+	writer.WriteUint32(e.mutsize)       // size of mutation
 
 	buf.Seek(0, 0)
-	writer.Write(buf.Bytes())				// mutation
+	writer.Write(buf.Bytes()) // mutation
 }
 
-func (e *SegmentEntry) TotalSize() uint32 {
-	return 	8 +		// pos
-		2 +		// token
-		4 +		// size
-		2 +		// mutation id
-		e.mutsize	// mut
+func (e *segmentEntry) totalSize() uint32 {
+	return 8 + // pos
+		2 + // token
+		4 + // size
+		e.mutsize // mut
 }
 
+func (e *segmentEntry) relativePosition() uint32 {
+	return uint32(e.position - e.segment.position_start)
+}

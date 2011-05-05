@@ -73,7 +73,7 @@ func NewTestCluster(nodescount int) *TestCluster {
 	return tc
 }
 
-func GetProcessForPath(paths... string) (resp *process.Process, other *process.Process) {
+func GetProcessForPath(paths ...string) (resp *process.Process, other *process.Process) {
 	var found []bool = make([]bool, len(tc.nodes))
 
 	for a, path := range paths {

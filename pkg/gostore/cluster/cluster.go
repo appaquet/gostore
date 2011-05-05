@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	MAX_NODE_ID		= 65535
+	MAX_NODE_ID = 65535
 )
 
 
-// TODO: replace all uint16 for token by a "Token" struct 
+// TODO: replace all uint16 for token by a "Token" struct (from db/Segment)
 
 // Cluster containing nodes, rings and nodes membership to 
 // rings.
@@ -26,9 +26,9 @@ type Cluster struct {
 	Nodes *Nodes
 	Rings *Rings
 
-	MyNode		*Node
+	MyNode *Node
 
-	Notifier	*WatcherNotifier
+	Notifier *WatcherNotifier
 }
 
 // Returns a new cluster configured using the given configuration
@@ -121,4 +121,3 @@ func (c *Cluster) MergeNode(nNode *Node, notify bool) {
 		}
 	}
 }
-

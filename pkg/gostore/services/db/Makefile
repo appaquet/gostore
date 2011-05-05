@@ -7,7 +7,6 @@ include $(GOROOT)/src/Make.inc
 TARG=gostore/services/db
 
 GOFILES=db.go\
-	mutations.go\
 	operations.go\
 	container.go\
 	transaction.go\

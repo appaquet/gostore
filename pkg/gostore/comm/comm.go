@@ -18,16 +18,16 @@ const (
 	FUNC_RESPONSE      = 0
 	FUNC_ERROR         = 1
 
-	TRACKER_CLEAN_TIME	= 5000 // 5 seconds
-	TRACKER_LOOP_SLEEP	= 100   // 100 ms
-	MAX_MSG_SIZE		= 8000
+	TRACKER_CLEAN_TIME = 5000 // 5 seconds
+	TRACKER_LOOP_SLEEP = 100  // 100 ms
+	MAX_MSG_SIZE       = 8000
 )
 
 type Comm struct {
 	*Services
 
 	// Running flag
-	running		bool
+	running bool
 
 	// cluster instance
 	Cluster *cluster.Cluster

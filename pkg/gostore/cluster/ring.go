@@ -20,9 +20,10 @@ type Ring struct {
 }
 
 // Returns a new cluster ring
-func NewRing(repFactor int) *Ring {cr := new(Ring)
+func NewRing(repFactor int) *Ring {
+	cr := new(Ring)
 	cr.ring = hashring.NewRing()
-	     cr.repFactor = repFactor
+	cr.repFactor = repFactor
 	return cr
 }
 

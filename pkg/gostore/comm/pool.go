@@ -62,4 +62,3 @@ func (p *Pool) Release(connection *Connection) {
 func (p *Pool) CloseAll() {
 	// TODO: Implement it
 }
-

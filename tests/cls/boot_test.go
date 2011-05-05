@@ -17,7 +17,6 @@ func TestBoot(t *testing.T) {
 	// start another node
 	StartNode(1)
 
-
 	err := WaitOnline(1, 10)
 	if err != nil {
 		t.Errorf("1) Got an error: %s", err)
@@ -49,5 +48,3 @@ func TestPersistence(t *testing.T) {
 
 	StartNode(1)
 }
-
-

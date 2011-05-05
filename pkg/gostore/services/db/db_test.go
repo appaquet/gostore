@@ -29,7 +29,9 @@ func newDb(wipe bool) *Db {
 
 	os.Mkdir("_test/data", 0777)
 
-	return NewDb(Config{DataPath:"_test/data/"})
+	db := NewDb(Config{DataPath: "_test/data/"})
+	db.createContainer("test_container")
+	return db
 }
 
 func TestWalk(t *testing.T) {
@@ -39,21 +41,21 @@ func TestWalk(t *testing.T) {
 	data = 1
 
 	// create first level
-	Walk(true, &data, &container, []string{})
+	walk(true, &data, &container, []string{})
 	if container != 1 {
 		t.Errorf("1) Container should be equal: 1!=%d", container)
 	}
 
 	// get first level
 	data = nil
-	Walk(false, &data, &container, []string{})
+	walk(false, &data, &container, []string{})
 	if data != 1 {
 		t.Errorf("2) Container should be equal: 1!=%d", container)
 	}
 
 	// create second level with array
 	container = nil
-	Walk(true, &data, &container, []string{"0"})
+	walk(true, &data, &container, []string{"0"})
 	if arr, ok := (container).([]interface{}); ok {
 		if arr[0] != 1 {
 			t.Errorf("3) arr[0] != 1, = %d", arr[0])
@@ -63,18 +65,18 @@ func TestWalk(t *testing.T) {
 	}
 
 	data = "OMG"
-	Walk(false, &data, &container, []string{"0"})
+	walk(false, &data, &container, []string{"0"})
 
 	// get second level with array
 	data = nil
-	Walk(false, &data, &container, []string{"0"})
+	walk(false, &data, &container, []string{"0"})
 	if data != "OMG" {
 		t.Errorf("5) arr[0] != OMG, = %s", data, container)
 	}
 
 	// add to a too small array
 	data = nil
-	Walk(true, &data, &container, []string{"2"})
+	walk(true, &data, &container, []string{"2"})
 	arr, _ := (container).([]interface{})
 	if len(arr) != 3 {
 		t.Errorf("6) len(arr[2]) != 3, = %d", len(arr))
@@ -87,7 +89,7 @@ func TestWalk(t *testing.T) {
 	// create multi level map
 	container = nil
 	data = true
-	Walk(true, &data, &container, []string{"hello", "how"})
+	walk(true, &data, &container, []string{"hello", "how"})
 	if mmap1, ok := (container).(map[string]interface{}); ok {
 		if mmap2, ok := (mmap1["hello"]).(map[string]interface{}); ok {
 			if mmap2["how"] != true {
@@ -101,14 +103,11 @@ func TestWalk(t *testing.T) {
 	}
 
 	// get multi level map
-	Walk(true, &data, &container, []string{"hello", "how"})
+	walk(true, &data, &container, []string{"hello", "how"})
 	if data != true {
 		t.Errorf("9) mmap[hello][how] != true, = %s", data)
 	}
 }
-
-
-
 
 
 /*
@@ -614,5 +613,3 @@ func BenchmarkRead(b *testing.B) {
 	}
 }
 */
-
-

@@ -6,14 +6,15 @@ import (
 )
 
 const (
-	val_int = 5
-	val_bool = 6
-	val_float = 7
+	val_int    = 5
+	val_bool   = 6
+	val_float  = 7
 	val_double = 8
 	val_string = 9
-	val_bytes = 10
-	val_json = 11
-	val_null = 12
+	val_bytes  = 10
+	val_null   = 11
+
+	err_incomplete = 1
 )
 
 
@@ -30,11 +31,11 @@ func NewEmptyTransaction() (t *Transaction) {
 	return t
 }
 
-func NewTransaction(cb func (b *TransactionBlock)) (t *Transaction) {
+func NewTransaction(cb func(b *TransactionBlock)) (t *Transaction) {
 	t = NewEmptyTransaction()
 	b := t.newBlock()
 	t.MasterBlock = b.Id
-	cb (b)
+	cb(b)
 	return t
 }
 
@@ -45,11 +46,10 @@ func (t *Transaction) newBlock() (b *TransactionBlock) {
 	return
 }
 
-func (t *Transaction) execute(vs *ViewState) (ret *TransactionReturn)  {
+func (t *Transaction) execute(vs *viewState) (ret *TransactionReturn) {
 	b := t.Blocks[int(*t.MasterBlock)]
 	return b.execute(t, vs)
 }
-
 
 
 //type TransactionValue struct {
@@ -73,7 +73,7 @@ func (v *TransactionValue) Value() interface{} {
 	}
 
 	switch *v.Type {
-	
+
 	case val_string:
 		return *v.StringValue
 
@@ -87,12 +87,12 @@ func interface2value(data interface{}) *TransactionValue {
 
 	case string:
 		return &TransactionValue{
-			Type: proto.Uint32(val_string),
+			Type:        proto.Uint32(val_string),
 			StringValue: proto.String(f),
 		}
 	}
 
-	return &TransactionValue {
+	return &TransactionValue{
 		Type: proto.Uint32(val_null),
 	}
 }
@@ -102,7 +102,7 @@ func interface2object(data interface{}) *TransactionObject {
 		return &TransactionObject{
 			Variable: v,
 		}
-	} 
+	}
 
 	return &TransactionObject{
 		Value: interface2value(data),
@@ -110,43 +110,83 @@ func interface2object(data interface{}) *TransactionObject {
 }
 
 
-
-
-
-
-func (b *TransactionBlock) SetVar(variable *TransactionVariable, data... interface{}) {
-	if len(data) == 0 {
-		panic("You must specify at least a value")	
-	}
-	if variable == nil {
-		panic("Variable must not be null")	
+//type TransactionObject struct {
+//	Value	*TransactionValue	"PB(bytes,1,opt,name=value)"
+//	Variable	*TransactionVariable	"PB(bytes,2,opt,name=variable)"
+//	XXX_unrecognized	[]byte
+//}
+func (object *TransactionObject) MakeAbsoluteValue(b *TransactionBlock) {
+	if object.Value != nil {
+		return
 	}
 
+	v := b.getRealVar(object.Variable)
+	object.Variable = nil
+	object.Value = v.Value
+}
 
-	acs := make([]*TransactionObject, len(data)-1)
-	for i:=0; i<len(data)-1; i++ {
-		acs[i] = interface2object(data[i])
+
+func data2destination(data []interface{}) (dest *TransactionOperationDestination, rest []interface{}) {
+	if v, ok := data[0].(*TransactionVariable); ok {
+		dest = &TransactionOperationDestination{
+			Variable: &TransactionOperationDestination_Variable{
+				Variable: v,
+			},
+		}
+		rest = data[1:]
+	} else {
+		if len(data) >= 2 {
+			container, ok1 := data[0].(string)
+			key, ok2 := data[1].(string)
+			if !ok1 || !ok2 {
+				panic("Invalid destination")
+			} else {
+				dest = &TransactionOperationDestination{
+					Object: &TransactionOperationDestination_Object{
+						Container: interface2value(container),
+						Key:       interface2value(key),
+					},
+				}
+				rest = data[2:]
+			}
+
+		} else {
+			panic("Invalid destination")
+		}
+	}
+	return
+
+}
+
+
+func (b *TransactionBlock) Set(data ...interface{}) {
+	if len(data) < 2 {
+		panic("You must at least specify destination and value")
 	}
 
-	val := interface2object(data[len(data)-1])
+	dest, rest := data2destination(data)
+
+	acs := make([]*TransactionObject, len(rest)-1)
+	for i := 0; i < len(rest)-1; i++ {
+		acs[i] = interface2object(rest[i])
+	}
+
+	val := interface2object(rest[len(rest)-1])
 
 	op := &TransactionOperation{
-		Type: proto.Uint32(op_setvar),
-		Setvariable: &TransactionOperation_SetVariable {
-			Variable: variable,
-			Accessors: acs,
-			Value: val,
+		Type: proto.Uint32(op_set),
+		Set: &TransactionOperation_Set{
+			Destination: dest,
+			Accessors:   acs,
+			Value:       val,
 		},
 	}
 	b.addOperation(op)
 }
 
-func (b *TransactionBlock) Set(data ...interface{}) {
-}
-
-func (b *TransactionBlock) Return(data... interface{}) {
+func (b *TransactionBlock) Return(data ...interface{}) {
 	op := &TransactionOperation{
-		Type: proto.Uint32(op_return),
+		Type:   proto.Uint32(op_return),
 		Return: &TransactionOperation_Return{},
 	}
 	op.Return.Returns = make([]*TransactionObject, len(data))
@@ -171,7 +211,7 @@ func (b *TransactionBlock) Return(data... interface{}) {
 	b.addOperation(op)
 }
 
-func (b *TransactionBlock) Get(data... interface{}) *TransactionVariable {
+func (b *TransactionBlock) Get(data ...interface{}) *TransactionVariable {
 	return nil
 }
 
@@ -195,20 +235,21 @@ func (b *TransactionBlock) addOperation(op *TransactionOperation) {
 	b.Operations = append(b.Operations, op)
 }
 
-func (b *TransactionBlock) execute(t *Transaction, vs *ViewState) (ret *TransactionReturn) {
+func (b *TransactionBlock) execute(t *Transaction, vs *viewState) (ret *TransactionReturn) {
 	ret = new(TransactionReturn)
 
 	for _, op := range b.Operations {
 		switch *op.Type {
 
-		case op_setvar:
-			ret.Error = op.Setvariable.execute(t, b, vs)
-			if ret.Error != nil {
+		case op_set:
+			opRet := op.Set.executeTransaction(t, b, vs)
+			if opRet != nil && opRet.Error != nil {
+				ret.Error = opRet.Error
 				return
 			}
-
+			
 		case op_return:
-			return op.Return.execute(t, b, vs)
+			return op.Return.executeTransaction(t, b, vs)
 
 		}
 

@@ -61,7 +61,7 @@ func New(directory string) *CommitLog {
 
 	// open the log
 	flag := os.O_RDWR | os.O_CREATE
-	cl.fd, err = os.Open(path, flag, 0777)
+	cl.fd, err = os.OpenFile(path, flag, 0777)
 	if err != nil {
 		log.Fatal("CommitLog: Cannot open commit log file %s: %s", path, err)
 	}
@@ -135,11 +135,11 @@ func (cl *CommitLog) RegisterMutation(mutation Mutation) {
 	cl.count++
 
 	cl.mutations[mutInfo.id] = mutInfo
-	cl.mutationsType[reflect.Typeof(mutation)] = mutInfo
+	cl.mutationsType[reflect.TypeOf(mutation)] = mutInfo
 }
 
 func (cl *CommitLog) Execute(mutation Mutation) {
-	typ := reflect.Typeof(mutation)
+	typ := reflect.TypeOf(mutation)
 	mutInfo, found := cl.mutationsType[typ]
 
 	if !found {

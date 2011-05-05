@@ -35,8 +35,8 @@ type Node struct {
 	// Rings in which the node is member
 	Rings []NodeRing
 
-	hash     string
-	cluster  *Cluster
+	hash    string
+	cluster *Cluster
 }
 
 // Node's rings structure
@@ -154,37 +154,37 @@ func StatusToString(status byte) string {
 
 
 func (n *Node) Serialize(writer typedio.Writer) (err os.Error) {
-	err = writer.WriteUint16(n.Id)				// id
+	err = writer.WriteUint16(n.Id) // id
 	if err != nil {
 		return
 	}
 
-	err = writer.WriteUint8(n.Status)			// status
+	err = writer.WriteUint8(n.Status) // status
 	if err != nil {
 		return
 	}
 
-	err = writer.WriteString(n.Address.String())		// address
+	err = writer.WriteString(n.Address.String()) // address
 	if err != nil {
 		return
 	}
 
-	err = writer.WriteUint16(n.TcpPort)			// tcp port
+	err = writer.WriteUint16(n.TcpPort) // tcp port
 	if err != nil {
 		return
 	}
 
-	err = writer.WriteUint16(n.UdpPort)			// udp port
+	err = writer.WriteUint16(n.UdpPort) // udp port
 	if err != nil {
 		return
 	}
 
-	err = writer.WriteUint8(uint8(len(n.Rings)))		// nb rings
+	err = writer.WriteUint8(uint8(len(n.Rings))) // nb rings
 	if err != nil {
 		return
 	}
 
-	for _, ring := range n.Rings {				// each ring 
+	for _, ring := range n.Rings { // each ring 
 		err = writer.WriteUint8(ring.Ring)
 		if err != nil {
 			return
@@ -201,41 +201,40 @@ func (n *Node) Serialize(writer typedio.Writer) (err os.Error) {
 
 
 func (n *Node) Unserialize(reader typedio.Reader) (err os.Error) {
-	n.Id, err = reader.ReadUint16()				// id
+	n.Id, err = reader.ReadUint16() // id
 	if err != nil {
 		return err
 	}
 
-	n.Status, err = reader.ReadUint8()			// status
+	n.Status, err = reader.ReadUint8() // status
 	if err != nil {
 		return err
 	}
 
-	strAddr, err := reader.ReadString()			// address
+	strAddr, err := reader.ReadString() // address
 	if err != nil {
 		return err
 	}
 	n.Address = net.ParseIP(strAddr)
 
-	n.TcpPort, err = reader.ReadUint16()			// tcp port
+	n.TcpPort, err = reader.ReadUint16() // tcp port
 	if err != nil {
 		return err
 	}
 
-	n.UdpPort, err = reader.ReadUint16()			// udp port
+	n.UdpPort, err = reader.ReadUint16() // udp port
 	if err != nil {
 		return err
 	}
 
-
-	nbRings, err := reader.ReadUint8()			// nb rings
+	nbRings, err := reader.ReadUint8() // nb rings
 	if err != nil {
 		return err
 	}
 
 	n.Rings = make([]NodeRing, nbRings)
 	var i uint8
-	for i=0; i<nbRings; i++ {				// each ring
+	for i = 0; i < nbRings; i++ { // each ring
 		nodeRing := NodeRing{}
 
 		nodeRing.Ring, err = reader.ReadUint8()
@@ -251,5 +250,3 @@ func (n *Node) Unserialize(reader typedio.Reader) (err os.Error) {
 
 	return nil
 }
-
-

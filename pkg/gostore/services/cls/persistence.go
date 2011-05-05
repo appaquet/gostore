@@ -17,23 +17,22 @@ func (cs *ClusterService) loadCluster() {
 	log.Debug("cls: Loading cluster data...")
 	stat, err := os.Stat(cs.clsDataPath)
 	if err == nil && stat.IsRegular() {
-		file, err := os.Open(cs.clsDataPath, os.O_RDONLY, 0777)
+		file, err := os.Open(cs.clsDataPath)
 		if err == nil {
 			typedFile := typedio.NewReader(file)
 
-			cs.clusterVersion, _ = typedFile.ReadInt64()		// cluster version
+			cs.clusterVersion, _ = typedFile.ReadInt64() // cluster version
 			cs.diskVerson = cs.clusterVersion
 
-
-			nbNodes, _ := typedFile.ReadUint16()			// nodes count
+			nbNodes, _ := typedFile.ReadUint16() // nodes count
 			var i uint16
-			for i=0; i<nbNodes; i++ {
+			for i = 0; i < nbNodes; i++ {
 				node := cluster.NewEmptyNode()
 				node.Unserialize(typedFile)
 
 				node.Status = cluster.Status_Offline
 
-				cs.cluster.MergeNode(node, false)	// merge node, doesn't notify
+				cs.cluster.MergeNode(node, false) // merge node, doesn't notify
 			}
 
 		} else {
@@ -51,23 +50,21 @@ func (cs *ClusterService) loadCluster() {
 }
 
 
-
 func (cs ClusterService) saveCluster() {
 	cs.clusterMutex.Lock()
 
 	tempPath := fmt.Sprintf("%s/%d", os.TempDir(), time.Nanoseconds())
-	file, err := os.Open(tempPath, os.O_WRONLY|os.O_CREATE, 0777)
+	file, err := os.Create(tempPath)
 	if err != nil {
 		log.Fatal("Couldn't open temp cluster data file", err)
 	}
 
 	typedFile := typedio.NewWriter(file)
 
-	typedFile.WriteInt64(cs.clusterVersion)			// cluster version
+	typedFile.WriteInt64(cs.clusterVersion) // cluster version
 	cs.diskVerson = cs.clusterVersion
 
-
-	typedFile.WriteUint16(cs.cluster.Nodes.Count())		// nodes count
+	typedFile.WriteUint16(cs.cluster.Nodes.Count()) // nodes count
 	for node := range cs.cluster.Nodes.Iter() {
 		node.Serialize(typedFile)
 	}
@@ -87,11 +84,11 @@ func (cs ClusterService) saveCluster() {
 // Mutations on the cluster are simply nodes that are being merged into the
 // cluster. 
 //
-type clusterMutation struct{
-	cls		*ClusterService
-	nodes		[]*cluster.Node
-	version		int64
-	notify		bool
+type clusterMutation struct {
+	cls     *ClusterService
+	nodes   []*cluster.Node
+	version int64
+	notify  bool
 }
 
 func (dm *clusterMutation) Unserialize(reader typedio.Reader) {
@@ -100,7 +97,7 @@ func (dm *clusterMutation) Unserialize(reader typedio.Reader) {
 	dm.nodes = make([]*cluster.Node, nbNodes)
 
 	var i uint16
-	for i=0; i<nbNodes; i++ {
+	for i = 0; i < nbNodes; i++ {
 		node := cluster.NewEmptyNode()
 		node.Unserialize(reader)
 		dm.nodes[i] = node

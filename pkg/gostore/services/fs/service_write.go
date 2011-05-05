@@ -71,7 +71,7 @@ func (fss *FsService) RemoteWrite(message *comm.Message) {
 	// Write the data to a temporary file
 	tempfile := fmt.Sprintf("%s/%d.%d.data", os.TempDir(), path.Hash(), time.Nanoseconds()) // TODO: Use config to get temp path
 
-	fd, err := os.Open(tempfile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	fd, err := os.Create(tempfile)
 	if err != nil {
 		os.Remove(tempfile)
 		log.Error("%d: FSS: Got an error while creating a temporary file (%s) for write of %s: %s", tempfile, path, err)

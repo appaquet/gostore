@@ -30,7 +30,7 @@ func (r *ResponseWriter) ReturnJSON(v interface{}) {
 		log.Error("API: Couldn't marshall JSON response: %s\n", err)
 	}
 
-	//r.Header().Set("Content-Type", "application/json")
-	r.SetHeader("Content-Type", "application/json")
+	r.Header().Set("Content-Type", "application/json")
+	//r.SetHeader("Content-Type", "application/json")
 	r.Write(bytes)
 }
