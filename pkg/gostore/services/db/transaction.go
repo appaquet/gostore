@@ -3,6 +3,7 @@ package db
 import (
 	proto "goprotobuf.googlecode.com/hg/proto"
 	"fmt"
+	"os"
 )
 
 const (
@@ -43,6 +44,17 @@ func (t *Transaction) newBlock() (b *TransactionBlock) {
 	b = new(TransactionBlock)
 	b.Id = proto.Uint32(uint32(len(t.Blocks)))
 	t.Blocks = append(t.Blocks, b)
+	return
+}
+
+func (t *Transaction) init() (err os.Error) {
+	for _, b := range t.Blocks {
+		err = b.init()
+		if err != nil {
+			return
+		}
+	}
+
 	return
 }
 
@@ -156,6 +168,35 @@ func data2destination(data []interface{}) (dest *TransactionOperationDestination
 	}
 	return
 
+}
+
+
+//type TransactionBlock struct {
+//	Id			*uint32			"PB(varint,1,req,name=id)"
+//	Parent			*TransactionBlock	"PB(bytes,2,opt,name=parent)"
+//	Operations		[]*TransactionOperation	"PB(bytes,5,rep,name=operations)"
+//	VariableCount		*uint32			"PB(varint,6,opt,name=variable_count)"
+//	Variables		[]*TransactionVariable	"PB(bytes,7,rep,name=variables)"
+//	XXX_unrecognized	[]byte
+//}
+func (b *TransactionBlock) init() (err os.Error) {
+	if b.VariableCount != nil && len(b.Variables) != int(*b.VariableCount) {
+		newVars := make([]*TransactionVariable, int(*b.VariableCount))
+		for _, vr := range b.Variables {
+			newVars[*vr.Id] = vr
+		}
+
+		for i:=uint32(0); i < *b.VariableCount; i++ {
+			if newVars[i] == nil {
+				newVars[i] = &TransactionVariable{
+					Block: b.Id,
+					Id: proto.Uint32(i),
+				}
+			}
+		}
+	}
+
+	return
 }
 
 

@@ -8,6 +8,9 @@ import (
 	proto "goprotobuf.googlecode.com/hg/proto"
 )
 
+var _ = fmt.Errorf
+var _ = proto.Bool
+
 
 //
 // Database config
@@ -63,7 +66,14 @@ func (db *Db) Execute(trans *Transaction) (ret *TransactionReturn) {
 
 
 	newtrans.Id = proto.Uint64(db.getNextTransactionId())
-	vs := db.viewstateManager.newViewState()
+
+	token := Token(0) // TODO: Use real token!!
+	vs := db.viewstateManager.createViewState(token, true, 0)
+
+	err = newtrans.init()
+	if err != nil {
+		panic(fmt.Sprintf("Transaction initialisation error: %s", err))
+	}
 
 	ret = newtrans.execute(vs)
 	bytes, err = proto.Marshal(ret)
@@ -77,10 +87,32 @@ func (db *Db) Execute(trans *Transaction) (ret *TransactionReturn) {
 		panic(fmt.Sprintf("Got an error unmarshalling: %s", err))
 	}
 
+	if newret.Error == nil {
+		err = vs.prepareCommit()
+		if err != nil {
+			newret.Error = &TransactionError{
+				Id: proto.Uint32(0), // TODO: ERRNO
+				Message: proto.String(err.String()),
+			}
+			return newret
+		}
+
+		err = vs.commit()
+		if err != nil {
+			newret.Error = &TransactionError{
+				Id: proto.Uint32(0), // TODO: ERRNO
+				Message: proto.String(err.String()),
+			}
+			return newret
+		}
+	}
+
+
 	return newret
 
 	/*trans.Id = proto.Uint64(db.getNextTransactionId())
-	vs := db.viewstateManager.newViewState()
+	token := Token(0) // TODO: Use real token!!
+	vs := db.viewstateManager.createViewState(token, true, 0)
 	return trans.execute(vs)*/
 }
 

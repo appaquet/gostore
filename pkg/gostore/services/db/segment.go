@@ -107,7 +107,7 @@ func (m *segmentManager) getCurrentSegment(token Token) *segment {
 
 		pos := uint64(0)
 		if seg != nil {
-			pos = seg.position_end
+			pos = seg.position_end // TODO: THIS IS NOT GOOD! IT SHOULD TAKE THE BIGGEST END POSITION OF ALL OVERRIDEN SEGMENTS
 		}
 
 		log.Info("Creating a new segment for tokens %d to %d @ %d", chunk.from, chunk.to, pos)
@@ -124,10 +124,10 @@ func (m *segmentManager) getCurrentSegment(token Token) *segment {
 	return seg
 }
 
-func (m *segmentManager) writeMutation(token Token, mutation *mutation) (segment *segment, entry *segmentEntry) {
-	segment = m.getCurrentSegment(token)
+func (m *segmentManager) writeMutation(token Token, mutation *mutation) (err os.Error) {
+	segment := m.getCurrentSegment(token)
 
-	entry = &segmentEntry{
+	entry := &segmentEntry{
 		segment: segment,
 		token: token,
 		mutation: mutation,
@@ -135,6 +135,9 @@ func (m *segmentManager) writeMutation(token Token, mutation *mutation) (segment
 
 	// write the entry
 	segment.write(entry)
+	mutation.seg = segment
+	mutation.segEntry = entry
+	err = mutation.execute(m.db, false)
 
 	// check if the segment can still be written after
 	size := segment.position_end - segment.position_start

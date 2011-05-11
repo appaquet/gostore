@@ -85,10 +85,7 @@ func (op *TransactionOperation_Set) executeTransaction(t *Transaction, b *Transa
 		}
 		op.Value.MakeAbsoluteValue(b)
 
-		containerName := op.Destination.Object.Container.Value().(string)
-		key := op.Destination.Object.Key.Value().(string)
-
-		osErr := vs.mutateObject(containerName, key, op)
+		osErr := vs.mutateObject(op)
 		if osErr != nil {
 			return &TransactionReturn{
 				Error: &TransactionError{
@@ -97,15 +94,20 @@ func (op *TransactionOperation_Set) executeTransaction(t *Transaction, b *Transa
 				},
 			}
 		}
-	} else {
-		// TODO: err = incomplete
 	}
 
 	return
 }
 
-func (op *TransactionOperation_Set) mutateObject(vs *viewState, obj *object) (err os.Error) {
+func (op *TransactionOperation_Set) mutateObject(obj *object) (err os.Error) {
 	obj.data = op.Value.Value.Value()
-
 	return
+}
+
+func (op *TransactionOperation_Set) getContainer() string {
+	return op.Destination.Object.Container.Value().(string)
+}
+
+func (op *TransactionOperation_Set) getKey() string {
+	return op.Destination.Object.Key.Value().(string)
 }

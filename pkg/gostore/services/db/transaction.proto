@@ -23,7 +23,9 @@ message TransactionBlock {
 	optional TransactionBlock parent = 2;
 
 	repeated TransactionOperation operations = 5;
-	repeated TransactionVariable variables = 6;
+
+	optional uint32 variable_count = 6;
+	repeated TransactionVariable variables = 7;
 }
 
 message TransactionVariable {

@@ -49,7 +49,8 @@ type TransactionBlock struct {
 	Id			*uint32			"PB(varint,1,req,name=id)"
 	Parent			*TransactionBlock	"PB(bytes,2,opt,name=parent)"
 	Operations		[]*TransactionOperation	"PB(bytes,5,rep,name=operations)"
-	Variables		[]*TransactionVariable	"PB(bytes,6,rep,name=variables)"
+	VariableCount		*uint32			"PB(varint,6,opt,name=variable_count)"
+	Variables		[]*TransactionVariable	"PB(bytes,7,rep,name=variables)"
 	XXX_unrecognized	[]byte
 }
 
