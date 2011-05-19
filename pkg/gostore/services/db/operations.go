@@ -2,12 +2,16 @@ package db
 
 import (
 	"os"
+	"gostore/log"
 	proto "goprotobuf.googlecode.com/hg/proto"
 )
+
+var _ = log.Fatal
 
 const (
 	op_return = 2
 	op_set    = 3
+	op_get    = 4
 )
 
 type operation interface {
@@ -69,6 +73,7 @@ func (op *TransactionOperation_Return) executeTransaction(t *Transaction, b *Tra
 func (op *TransactionOperation_Set) executeTransaction(t *Transaction, b *TransactionBlock, vs *viewState) (ret *TransactionReturn) {
 	// TODO: Walk!
 
+	// set into a variable
 	if op.Destination.Variable != nil {
 		v := b.getRealVar(op.Destination.Variable.Variable)
 		if op.Value.Value != nil {
@@ -78,6 +83,7 @@ func (op *TransactionOperation_Set) executeTransaction(t *Transaction, b *Transa
 			v.Value = valvar.Value
 		}
 
+	// set into a database object
 	} else if op.Destination.Object != nil {
 		// make sure we don't use variables anymore
 		for _, ac := range op.Accessors {
@@ -110,4 +116,42 @@ func (op *TransactionOperation_Set) getContainer() string {
 
 func (op *TransactionOperation_Set) getKey() string {
 	return op.Destination.Object.Key.Value().(string)
+}
+
+
+// 
+// Get
+//
+func (op *TransactionOperation_Get) executeTransaction(t *Transaction, b *TransactionBlock, vs *viewState) (ret *TransactionReturn) {
+	// TODO: Walk!
+
+	var value *TransactionValue
+
+	if op.Source.Variable != nil {
+		sourceVar := b.getRealVar(op.Source.Variable.Variable)
+		value = sourceVar.Value
+
+
+	} else if op.Source.Object != nil {
+		// make sure we don't use variables anymore
+		for _, ac := range op.Accessors {
+			ac.MakeAbsoluteValue(b)
+		}
+
+		obj, osErr := vs.getObject(op.Source.Object.Container.Value().(string), op.Source.Object.Key.Value().(string))
+		if osErr != nil {
+			return &TransactionReturn{
+				Error: &TransactionError{
+					Id: proto.Uint32(0), // TODO: ERRNO
+					Message: proto.String(osErr.String()),
+				},
+			}
+		}
+		value = interface2value(obj.data)
+	}
+
+	destVar := b.getRealVar(op.Destination)
+	destVar.Value = value
+
+	return
 }

@@ -253,7 +253,32 @@ func (b *TransactionBlock) Return(data ...interface{}) {
 }
 
 func (b *TransactionBlock) Get(data ...interface{}) *TransactionVariable {
-	return nil
+	destVar := b.NewVar()
+	b.GetInto(destVar, data...)
+	return destVar
+}
+
+func (b *TransactionBlock) GetInto(dest *TransactionVariable, data ...interface{}) {
+	if len(data) < 1 {
+		panic("You must at least specify source")
+	}
+
+	source, rest := data2destination(data)
+
+	acs := make([]*TransactionObject, len(rest))
+	for i := 0; i < len(rest); i++ {
+		acs[i] = interface2object(rest[i])
+	}
+
+	op := &TransactionOperation{
+		Type: proto.Uint32(op_get),
+		Get: &TransactionOperation_Get{
+			Destination: dest,
+			Source: source,
+			Accessors:   acs,
+		},
+	}
+	b.addOperation(op)
 }
 
 func (b *TransactionBlock) NewVar() *TransactionVariable {
@@ -282,16 +307,22 @@ func (b *TransactionBlock) execute(t *Transaction, vs *viewState) (ret *Transact
 	for _, op := range b.Operations {
 		switch *op.Type {
 
+		case op_return:
+			return op.Return.executeTransaction(t, b, vs)
+
 		case op_set:
 			opRet := op.Set.executeTransaction(t, b, vs)
 			if opRet != nil && opRet.Error != nil {
 				ret.Error = opRet.Error
 				return
 			}
-			
-		case op_return:
-			return op.Return.executeTransaction(t, b, vs)
 
+		case op_get:
+			opRet := op.Get.executeTransaction(t, b, vs)
+			if opRet != nil && opRet.Error != nil {
+				ret.Error = opRet.Error
+				return
+			}
 		}
 
 	}

@@ -30,7 +30,8 @@ type object struct {
 }
 
 const (
-	obj_flag_deleted byte = 0x01
+	obj_flag_deleted	byte = 0x01 // has been deleted
+	obj_flag_new		byte = 0x02 // mark as "new" in a viewstate (modified)
 )
 
 func (o *object) String() string {

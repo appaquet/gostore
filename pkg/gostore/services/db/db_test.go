@@ -3,6 +3,7 @@ package db
 import (
 	"testing"
 	"os"
+	"time"
 	"gostore/log"
 )
 
@@ -31,6 +32,11 @@ func newDb(wipe bool) *Db {
 
 	db := NewDb(Config{DataPath: "_test/data/"})
 	db.createContainer("test_container")
+
+	if !wipe {
+		db.Reload()
+	}
+
 	return db
 }
 
@@ -109,6 +115,66 @@ func TestWalk(t *testing.T) {
 	}
 }
 
+
+func TestReloadSetGet(t *testing.T) {
+	db := newDb(true)
+	db.segmentManager.segMaxSize = 65536
+	for i:=0;i<10000;i++ {
+		trx := NewTransaction(func(b *TransactionBlock) {
+			b.Set("test_container", "key", "val")
+		})
+		ret := db.Execute(trx)
+		if ret.Error != nil {
+			t.Errorf("Got an error at iter %d: %s", i, *ret.Error.Message)
+			t.FailNow()
+		}
+	}
+	db.Close()
+	log.Error("%v", db.containers)
+
+	db = newDb(false)
+	log.Error("%v", db.containers)
+
+
+	ret := db.Execute(NewTransaction(func (b *TransactionBlock) {
+		b.Return(b.Get("test_container", "key"))
+	}))
+	if len(ret.Returns) != 1 {
+		t.Errorf("Should have returned 1 item, got %v", ret.Returns)
+	} else if ret.Returns[0].Value() != "val" {
+		t.Errorf("Returned value should be 'val', got %v", ret.Returns[0].Value())
+	}
+}
+
+func TestMultiThread(t *testing.T) {
+	th := 4
+	ops := 10000
+	db := newDb(true)
+	c := make(chan bool, th)
+
+	f := func() {
+		for i:=0;i<ops;i++ {
+			db.Execute(NewTransaction(func(b *TransactionBlock) {
+				b.Set("test_container", "key", "val")
+			}))
+		}
+
+		c <- true
+	}
+
+	start := time.Nanoseconds()
+	for i:=0;i<th;i++ {
+		go f()
+	}
+
+	for i:=0;i<th;i++ {
+		<-c
+	}
+
+	elaps := float64(time.Nanoseconds()-start)/1000000000
+	persec := float64(ops*th)/elaps
+	t.Logf("Ran in %f sec. %f per sec", elaps, persec)
+}
 
 /*
 func TestSet(t *testing.T) {

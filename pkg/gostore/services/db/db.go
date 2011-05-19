@@ -4,13 +4,15 @@ import (
 	"strconv"
 	"time"
 	"fmt"
+	"os"
 	"gostore/cluster"
 	proto "goprotobuf.googlecode.com/hg/proto"
 )
 
 var _ = fmt.Errorf
 var _ = proto.Bool
-
+var _ = os.NewError
+var _ = time.After
 
 //
 // Database config
@@ -37,7 +39,7 @@ func NewDb(config Config) *Db {
 	db.config = config
 	db.containers = make(map[string]container)
 
-	db.segmentManager = newSegmentManager(db, config.DataPath, 0, cluster.MAX_NODE_ID)
+	db.segmentManager = newSegmentManager(config.DataPath, 0, cluster.MAX_NODE_ID)
 	db.viewstateManager = newViewStateManager(db)
 
 	return db
@@ -47,12 +49,26 @@ func (db *Db) createContainer(name string) {
 	db.containers[name] = newContainer()
 }
 
-
 func (db *Db) getNextTransactionId() uint64 {
 	return uint64(time.Nanoseconds())
 }
 
+func (db *Db) Reload() {
+	err := db.segmentManager.replayAll(db)
+	if err != nil {
+		panic(err)
+	}
+
+}
+
+func (db *Db) Close() {
+	db.segmentManager.closeAll()
+}
+
 func (db *Db) Execute(trans *Transaction) (ret *TransactionReturn) {
+	var err os.Error
+
+	//*
 	bytes, err := proto.Marshal(trans)
 	if err != nil {
 		panic(fmt.Sprintf("Got an error marshalling: %s", err))
@@ -86,10 +102,23 @@ func (db *Db) Execute(trans *Transaction) (ret *TransactionReturn) {
 	if err != nil {
 		panic(fmt.Sprintf("Got an error unmarshalling: %s", err))
 	}
+	//*/
+
+
+	/*
+	trans.Id = proto.Uint64(db.getNextTransactionId())
+	token := Token(0) // TODO: Use real token!!
+	trans.init()
+	vs := db.viewstateManager.createViewState(token, true, 0)
+	newret := trans.execute(vs)
+	//*/
+
 
 	if newret.Error == nil {
 		err = vs.prepareCommit()
 		if err != nil {
+			vs.rollback()
+
 			newret.Error = &TransactionError{
 				Id: proto.Uint32(0), // TODO: ERRNO
 				Message: proto.String(err.String()),
@@ -110,10 +139,6 @@ func (db *Db) Execute(trans *Transaction) (ret *TransactionReturn) {
 
 	return newret
 
-	/*trans.Id = proto.Uint64(db.getNextTransactionId())
-	token := Token(0) // TODO: Use real token!!
-	vs := db.viewstateManager.createViewState(token, true, 0)
-	return trans.execute(vs)*/
 }
 
 

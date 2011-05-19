@@ -98,6 +98,7 @@ type TransactionOperation struct {
 	Type			*uint32				"PB(varint,1,req,name=type)"
 	Return			*TransactionOperation_Return	"PB(group,2,opt,name=Return)"
 	Set			*TransactionOperation_Set	"PB(group,3,opt,name=Set)"
+	Get			*TransactionOperation_Get	"PB(group,4,opt,name=Get)"
 	XXX_unrecognized	[]byte
 }
 
@@ -123,6 +124,17 @@ type TransactionOperation_Set struct {
 
 func (this *TransactionOperation_Set) Reset() {
 	*this = TransactionOperation_Set{}
+}
+
+type TransactionOperation_Get struct {
+	Destination		*TransactionVariable			"PB(bytes,1,req,name=destination)"
+	Source			*TransactionOperationDestination	"PB(bytes,2,req,name=source)"
+	Accessors		[]*TransactionObject			"PB(bytes,3,rep,name=accessors)"
+	XXX_unrecognized	[]byte
+}
+
+func (this *TransactionOperation_Get) Reset() {
+	*this = TransactionOperation_Get{}
 }
 
 type TransactionOperationDestination struct {

@@ -63,8 +63,15 @@ message TransactionOperation {
 		required TransactionObject value = 3;
 	};
 
+	optional group Get = 4 {
+		required TransactionVariable destination = 1;
+		required TransactionOperationDestination source = 2;
+		repeated TransactionObject accessors = 3;
+	};
 }
 
+
+// TODO: CHANGE NAME. NOT SEMANTIC!
 message TransactionOperationDestination {
 	optional group Variable = 1 {
 		required TransactionVariable variable = 1;

@@ -34,6 +34,24 @@ func TestSet(t *testing.T) {
 	}
 }
 
+func TestGet(t *testing.T) {
+	db := newDb(true)
+	ret := db.Execute(NewTransaction(func (b *TransactionBlock) {
+		vr1 := b.NewVar()
+		b.Set(vr1, "allo")
+		ret1 := b.Get(vr1)
+
+		b.Set("test_container", "key", "val")
+		ret2 := b.Get("test_container", "key")
+
+		b.Return(ret1, ret2)
+	}))
+
+	if len(ret.Returns) != 2 || ret.Returns[0].Value() != "allo" || ret.Returns[1].Value() != "val" {
+		t.Errorf("Should have returned 2 values ['allo', 'val'], got: %v", ret.Returns)
+	}
+}
+
 
 func BenchmarkSet(b *testing.B) {
 	b.StopTimer()
@@ -44,10 +62,26 @@ func BenchmarkSet(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		trx := NewTransaction(func(b *TransactionBlock) {
-			myVar1 := b.NewVar()
-			b.Set(myVar1, "salut 1.0")
+			b.Set("test_container", "benchset", "salut 1.0")
 		})
 
 		benchDb.Execute(trx)
+	}
+}
+
+func BenchmarkGet(b *testing.B) {
+	b.StopTimer()
+	if benchDb == nil {
+		benchDb = newDb(true)
+		benchDb.Execute(NewTransaction(func(b *TransactionBlock) {
+			b.Set("test_container", "benchget", "somevalue")
+		}))
+	}
+	b.StartTimer()
+
+	for i := 0; i < b.N; i++ {
+		benchDb.Execute(NewTransaction(func(b *TransactionBlock) {
+			b.Return(b.Get("test_container", "benchget"))
+		}))
 	}
 }
