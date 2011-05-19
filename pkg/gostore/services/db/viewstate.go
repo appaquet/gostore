@@ -295,6 +295,11 @@ func (vs *viewState) prepareCommit() (err os.Error) {
 		return err
 	}
 
+	<- vs.wait
+	if vs.error != nil {
+		return vs.error
+	}
+
 	return
 }
 
@@ -306,6 +311,11 @@ func (vs *viewState) commit() (err os.Error) {
 	err = vs.db.segmentManager.writeExecuteMutation(vs.token, mut, vs.db)
 	if err != nil {
 		return err
+	}
+
+	<- vs.wait
+	if vs.error != nil {
+		return vs.error
 	}
 
 	return
@@ -321,6 +331,11 @@ func (vs *viewState) rollback() (err os.Error) {
 		return err
 	}
 
+	<- vs.wait
+	if vs.error != nil {
+		return vs.error
+	}
+
 	return
 }
 
@@ -331,6 +346,9 @@ func (vs *viewState) executePrepareCommit(m *viewStateManager) (prepared, abort 
 	prepared = true
 	abort = true
 	vsSegmentPosition := vs.segEntry.absolutePosition()
+
+
+	// TODO: Always lock in the same order!!
 
 	for objMapKey, obj := range vs.objects {
 		forWrite := obj.isFlag(obj_flag_new)
@@ -461,13 +479,13 @@ func (mut *mutation) execute(db *Db, replay bool) (err os.Error) {
 		err = mut.executeObjectOperation(db, replay)
 
 	case mut_prepare_vs:
-		err = mut.executePrepareVs(db)
+		err = mut.executePrepareVs(db, replay)
 
 	case mut_commit_vs:
-		err = mut.executeCommitVs(db)
+		err = mut.executeCommitVs(db, replay)
 
 	case mut_rollback_vs:
-		err = mut.executeRollbackVs(db)
+		err = mut.executeRollbackVs(db, replay)
 
 	}
 
@@ -520,49 +538,46 @@ func (mut *mutation) executeObjectOperation(db *Db, replay bool) (err os.Error) 
 	return
 }
 
-func (mut *mutation) executePrepareVs(db *Db) (err os.Error) {
+func (mut *mutation) executePrepareVs(db *Db, replay bool) (err os.Error) {
 	vs := db.viewstateManager.getViewState(mut.segEntry.token, mut.vs)
 	if vs == nil {
 		return os.NewError("Unknown ViewState to prepare for commit")
 	}
 
 	db.viewstateManager.prepare <- vs
-	<- vs.wait
 
-	if vs.error != nil {
-		return vs.error
+	if replay {
+		<-vs.wait
 	}
 
 	return
 }
 
-func (mut *mutation) executeCommitVs(db *Db) (err os.Error) {
+func (mut *mutation) executeCommitVs(db *Db, replay bool) (err os.Error) {
 	vs := db.viewstateManager.getViewState(mut.segEntry.token, mut.vs)
 	if vs == nil {
 		return os.NewError("Unknown ViewState to commit")
 	}
 
 	db.viewstateManager.commit <- vs
-	<- vs.wait
 
-	if vs.error != nil {
-		return vs.error
+	if replay {
+		<-vs.wait
 	}
 
 	return
 }
 
-func (mut *mutation) executeRollbackVs(db *Db) (err os.Error) {
+func (mut *mutation) executeRollbackVs(db *Db, replay bool) (err os.Error) {
 	vs := db.viewstateManager.getViewState(mut.segEntry.token, mut.vs)
 	if vs == nil {
 		return os.NewError("Unknown ViewState to rollback")
 	}
 
 	db.viewstateManager.rollback <- vs
-	<- vs.wait
 
-	if vs.error != nil {
-		return vs.error
+	if replay {
+		<-vs.wait
 	}
 
 	return
@@ -607,8 +622,6 @@ func (mut *mutation) serialize(writer typedio.Writer) (err os.Error) {
 		if err != nil {
 			return
 		}
-
-
 	}
 
 	return

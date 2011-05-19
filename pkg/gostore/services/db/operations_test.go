@@ -7,7 +7,7 @@ import (
 
 
 func TestSet(t *testing.T) {
-	db := newDb(true)
+	db := newTestDb(true, 0)
 	trx := NewTransaction(func(b *TransactionBlock) {
 		myVar1 := b.NewVar()
 		b.Set(myVar1, "salut 1.0")
@@ -35,7 +35,7 @@ func TestSet(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	db := newDb(true)
+	db := newTestDb(true, 0)
 	ret := db.Execute(NewTransaction(func (b *TransactionBlock) {
 		vr1 := b.NewVar()
 		b.Set(vr1, "allo")
@@ -56,7 +56,7 @@ func TestGet(t *testing.T) {
 func BenchmarkSet(b *testing.B) {
 	b.StopTimer()
 	if benchDb == nil {
-		benchDb = newDb(true)
+		benchDb = newTestDb(true, 0)
 	}
 	b.StartTimer()
 
@@ -72,7 +72,7 @@ func BenchmarkSet(b *testing.B) {
 func BenchmarkGet(b *testing.B) {
 	b.StopTimer()
 	if benchDb == nil {
-		benchDb = newDb(true)
+		benchDb = newTestDb(true, 0)
 		benchDb.Execute(NewTransaction(func(b *TransactionBlock) {
 			b.Set("test_container", "benchget", "somevalue")
 		}))

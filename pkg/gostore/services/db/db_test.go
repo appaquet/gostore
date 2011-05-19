@@ -3,6 +3,8 @@ package db
 import (
 	"testing"
 	"os"
+	"strconv"
+	"fmt"
 	"time"
 	"gostore/log"
 )
@@ -19,18 +21,18 @@ func setupTests() {
 }
 
 
-func newDb(wipe bool) *Db {
+func newTestDb(wipe bool, id int) *Db {
 	log.MaxLevel = 2
 
 	setupTests()
 
 	if wipe {
-		os.RemoveAll("_test/data")
+		os.RemoveAll("_test/data"+strconv.Itoa(id))
 	}
 
-	os.Mkdir("_test/data", 0777)
+	os.Mkdir("_test/data"+strconv.Itoa(id), 0777)
 
-	db := NewDb(Config{DataPath: "_test/data/"})
+	db := NewDb(Config{DataPath: "_test/data"+strconv.Itoa(id)+"/"})
 	db.createContainer("test_container")
 
 	if !wipe {
@@ -117,7 +119,7 @@ func TestWalk(t *testing.T) {
 
 
 func TestReloadSetGet(t *testing.T) {
-	db := newDb(true)
+	db := newTestDb(true, 0)
 	db.segmentManager.segMaxSize = 65536
 	for i:=0;i<10000;i++ {
 		trx := NewTransaction(func(b *TransactionBlock) {
@@ -132,7 +134,7 @@ func TestReloadSetGet(t *testing.T) {
 	db.Close()
 	log.Error("%v", db.containers)
 
-	db = newDb(false)
+	db = newTestDb(false, 0)
 	log.Error("%v", db.containers)
 
 
@@ -147,15 +149,15 @@ func TestReloadSetGet(t *testing.T) {
 }
 
 func TestMultiThread(t *testing.T) {
-	th := 4
+	th := 2
 	ops := 10000
-	db := newDb(true)
 	c := make(chan bool, th)
 
-	f := func() {
+	f := func(id int) {
+		db := newTestDb(true, id)
 		for i:=0;i<ops;i++ {
 			db.Execute(NewTransaction(func(b *TransactionBlock) {
-				b.Set("test_container", "key", "val")
+				b.Set("test_container", fmt.Sprintf("key%d", i), "val")
 			}))
 		}
 
@@ -164,7 +166,7 @@ func TestMultiThread(t *testing.T) {
 
 	start := time.Nanoseconds()
 	for i:=0;i<th;i++ {
-		go f()
+		go f(i)
 	}
 
 	for i:=0;i<th;i++ {
@@ -178,7 +180,7 @@ func TestMultiThread(t *testing.T) {
 
 /*
 func TestSet(t *testing.T) {
-	dbinst := newDb(true)
+	dbinst := newTestDb(true)
 
 	trx := NewTransaction()
 	ret := trx.Set("namespace", "objmap", "objkey", map[string]interface{}{"test": 1})
@@ -539,7 +541,7 @@ func initSteps(resetTests bool) {
 }
 
 func TestStepsSimple(t *testing.T) {
-	db := newDb(true)
+	db := newTestDb(true)
 
 	initSteps(true)
 
@@ -559,7 +561,7 @@ func TestStepsSimple(t *testing.T) {
 func TestStepsLog(t *testing.T) {
 	// make the db crash at different state
 	for i, _ := range steps {
-		db := newDb(true)
+		db := newTestDb(true)
 		initSteps(true)
 
 		// execute the state
@@ -568,7 +570,7 @@ func TestStepsLog(t *testing.T) {
 
 			// reset the db, it will replay its log
 			if i == j {
-				db = newDb(false)
+				db = newTestDb(false)
 			}
 
 			for testId, test := range tests {
@@ -586,7 +588,7 @@ func TestStepsCommit(t *testing.T) {
 	// make the db crash at different state
 	for i, _ := range steps {
 		for j, _ := range steps {
-			db := newDb(true)
+			db := newTestDb(true)
 			initSteps(true)
 
 			// execute the state
@@ -600,7 +602,7 @@ func TestStepsCommit(t *testing.T) {
 
 				// reset the db, it will replay its log
 				if i == k {
-					db = newDb(false)
+					db = newTestDb(false)
 				}
 
 				for testId, test := range tests {
@@ -616,14 +618,14 @@ func TestStepsCommit(t *testing.T) {
 
 
 /*func TestReplay(t *testing.T) {
-	db := newDb(true)
+	db := newTestDb(true)
 
 	trx := NewTransaction()
 	trx.Set("namespace", "replaytest", "test", true)
 	dbinst.Execute(trx)
 
 	Commit(-1)
-	db = newDb(false)
+	db = newTestDb(false)
 
 	trx = NewTransaction()
 	ret := trx.Get("namespace", "replaytest", "test")
@@ -654,7 +656,7 @@ func TestStepsCommit(t *testing.T) {
 func BenchmarkWrite(b *testing.B) {
 	if benchDb == nil {
 		b.StopTimer()
-		benchDb = newDb(true)
+		benchDb = newTestDb(true)
 		b.StartTimer()
 	}
 
@@ -668,7 +670,7 @@ func BenchmarkWrite(b *testing.B) {
 func BenchmarkRead(b *testing.B) {
 	if benchDb == nil {
 		b.StopTimer()
-		benchDb = newDb(false)
+		benchDb = newTestDb(false)
 		b.StartTimer()
 	}
 
