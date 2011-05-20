@@ -5,6 +5,7 @@ import (
 	"time"
 	"fmt"
 	"os"
+	"sync"
 	"gostore/cluster"
 	proto "goprotobuf.googlecode.com/hg/proto"
 )
@@ -27,7 +28,9 @@ type Config struct {
 //
 // TODO: Replace by shard
 type Db struct {
-	containers map[string]container
+	containers 	map[string]container
+	containersMutex	*sync.Mutex
+
 	config Config
 
 	segmentManager   *segmentManager
@@ -38,6 +41,7 @@ func NewDb(config Config) *Db {
 	db := new(Db)
 	db.config = config
 	db.containers = make(map[string]container)
+	db.containersMutex = new(sync.Mutex)
 
 	db.segmentManager = newSegmentManager(config.DataPath, 0, cluster.MAX_NODE_ID)
 	db.viewstateManager = newViewStateManager(db)
@@ -46,7 +50,17 @@ func NewDb(config Config) *Db {
 }
 
 func (db *Db) createContainer(name string) {
+	db.containersMutex.Lock()
 	db.containers[name] = newContainer()
+	db.containersMutex.Unlock()
+}
+
+func (db *Db) getContainer(name string) (container, bool) {
+	db.containersMutex.Lock()
+	c, f := db.containers[name]
+	db.containersMutex.Unlock()
+
+	return c,f
 }
 
 func (db *Db) getNextTransactionId() uint64 {
@@ -68,7 +82,7 @@ func (db *Db) Close() {
 func (db *Db) Execute(trans *Transaction) (ret *TransactionReturn) {
 	var err os.Error
 
-	//*
+	/*
 	bytes, err := proto.Marshal(trans)
 	if err != nil {
 		panic(fmt.Sprintf("Got an error marshalling: %s", err))
@@ -105,7 +119,7 @@ func (db *Db) Execute(trans *Transaction) (ret *TransactionReturn) {
 	//*/
 
 
-	/*
+	//*
 	trans.Id = proto.Uint64(db.getNextTransactionId())
 	token := Token(0) // TODO: Use real token!!
 	trans.init()

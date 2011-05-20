@@ -57,6 +57,8 @@ type segmentManager struct {
 	nextSegId     uint16
 	timeline	*segmentCollection
 
+	writeMutex  *sync.Mutex
+
 	dataDir string
 	tokens  TokenRange
 
@@ -67,6 +69,7 @@ func newSegmentManager(dataDir string, tokenBefore, token Token) *segmentManager
 	m := &segmentManager{
 		segments: make([]*segment, cluster.MAX_NODE_ID+1),
 		timeline: newSegmentCollection(),
+		writeMutex: new(sync.Mutex),
 		dataDir: dataDir,
 		tokens: TokenRange{tokenBefore, token},
 		segMaxSize: SEG_MAX_SIZE,
@@ -156,13 +159,11 @@ func (m *segmentManager) getWritableSegment(token Token) *segment {
 
 func (m *segmentManager) writeExecuteMutation(token Token, mutation *mutation, db *Db) (err os.Error) {
 	m.writeMutation(token, mutation)
-	err = mutation.execute(db, false) // execute, non-replay
 	return
 }
 
 func (m *segmentManager) writeMutation(token Token, mutation *mutation) {
-	// TODO: Thread safe
-
+	m.writeMutex.Lock()
 	segment := m.getWritableSegment(token)
 
 	// create the entry
@@ -180,8 +181,7 @@ func (m *segmentManager) writeMutation(token Token, mutation *mutation) {
 		segment.writable = false
 		log.Info("Segment %s too big for a new entry. Rotating!", segment)
 	}
-
-	return
+	m.writeMutex.Unlock()
 }
 
 func (m *segmentManager) closeAll() {

@@ -2,18 +2,35 @@ package db
 
 import (
 	"fmt"
+	"sync"
 )
 
 
 type container struct {
 	objects map[string]object
+	mutex	*sync.Mutex
 }
 
 func newContainer() container {
 	c := container{
 		objects: make(map[string]object),
+		mutex: new(sync.Mutex),
 	}
 	return c
+}
+
+func (c *container) getObject(key string) (object, bool) {
+	c.mutex.Lock()
+	o, f := c.objects[key]
+	c.mutex.Unlock()
+
+	return o,f
+}
+
+func (c *container) setObject(key string, obj object) {
+	c.mutex.Lock()
+	c.objects[key] = obj
+	c.mutex.Unlock()
 }
 
 func (c *container) String() string {

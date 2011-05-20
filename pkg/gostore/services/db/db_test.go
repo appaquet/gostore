@@ -9,6 +9,9 @@ import (
 	"gostore/log"
 )
 
+var _ = fmt.Errorf
+var _ = time.Friday
+
 var (
 	benchDb *Db
 )
@@ -148,6 +151,7 @@ func TestReloadSetGet(t *testing.T) {
 	}
 }
 
+//*
 func TestMultiThread(t *testing.T) {
 	th := 2
 	ops := 10000
@@ -177,6 +181,7 @@ func TestMultiThread(t *testing.T) {
 	persec := float64(ops*th)/elaps
 	t.Logf("Ran in %f sec. %f per sec", elaps, persec)
 }
+//*/
 
 /*
 func TestSet(t *testing.T) {
