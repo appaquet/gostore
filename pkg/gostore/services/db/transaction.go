@@ -18,6 +18,11 @@ const (
 	err_incomplete = 1
 )
 
+type transactionInfo struct {
+	token		Token
+	readOnly	bool
+}
+
 
 //type Transaction struct {
 //	Id	*uint64	"PB(varint,1,opt,name=id)"
@@ -47,9 +52,9 @@ func (t *Transaction) newBlock() (b *TransactionBlock) {
 	return
 }
 
-func (t *Transaction) init() (err os.Error) {
+func (t *Transaction) init(ti *transactionInfo) (err os.Error) {
 	for _, b := range t.Blocks {
-		err = b.init()
+		err = b.init(t, ti)
 		if err != nil {
 			return
 		}
@@ -179,7 +184,9 @@ func data2destination(data []interface{}) (dest *TransactionOperationDestination
 //	Variables		[]*TransactionVariable	"PB(bytes,7,rep,name=variables)"
 //	XXX_unrecognized	[]byte
 //}
-func (b *TransactionBlock) init() (err os.Error) {
+func (b *TransactionBlock) init(t *Transaction, ti *transactionInfo) (err os.Error) {
+
+	// initialize variables
 	if b.VariableCount != nil && len(b.Variables) != int(*b.VariableCount) {
 		newVars := make([]*TransactionVariable, int(*b.VariableCount))
 		for _, vr := range b.Variables {
@@ -195,6 +202,27 @@ func (b *TransactionBlock) init() (err os.Error) {
 			}
 		}
 	}
+
+
+	// initialize operations
+	for _, op := range b.Operations {
+		switch *op.Type {
+
+		case op_return:
+			err = op.Return.init(t, ti)
+
+		case op_set:
+			err = op.Set.init(t, ti)
+
+		case op_get:
+			err = op.Get.init(t, ti)
+		}
+
+		if err != nil {
+			return
+		}
+	}
+
 
 	return
 }

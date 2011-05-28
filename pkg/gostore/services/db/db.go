@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"time"
 	"fmt"
+	"gostore/log"
 	"os"
 	"sync"
 	"gostore/cluster"
@@ -14,6 +15,7 @@ var _ = fmt.Errorf
 var _ = proto.Bool
 var _ = os.NewError
 var _ = time.After
+var _ = log.Error
 
 //
 // Database config
@@ -72,7 +74,6 @@ func (db *Db) Reload() {
 	if err != nil {
 		panic(err)
 	}
-
 }
 
 func (db *Db) Close() {
@@ -122,8 +123,12 @@ func (db *Db) Execute(trans *Transaction) (ret *TransactionReturn) {
 	//*
 	trans.Id = proto.Uint64(db.getNextTransactionId())
 	token := Token(0) // TODO: Use real token!!
-	trans.init()
-	vs := db.viewstateManager.createViewState(token, true, 0)
+	ti := &transactionInfo{
+		token: Token(0),
+		readOnly: true,
+	}
+	trans.init(ti)
+	vs := db.viewstateManager.createViewState(token, ti.readOnly, true, 0)
 	newret := trans.execute(vs)
 	//*/
 

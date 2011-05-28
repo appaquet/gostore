@@ -57,11 +57,12 @@ func newViewStateManager(db *Db) *viewStateManager {
 	return m
 }
 
-func (m *viewStateManager) createViewState(token Token, genId bool, id uint32) *viewState {
+func (m *viewStateManager) createViewState(token Token, readOnly bool, genId bool, id uint32) *viewState {
 	m.vsMutex.Lock()
 	if genId {
 		found := false
 		for !found {
+			m.nextId++
 			key := makeVsKey(token, m.nextId)
 			if _, ok := m.vs[key]; !ok {
 				found = true
@@ -77,8 +78,8 @@ func (m *viewStateManager) createViewState(token Token, genId bool, id uint32) *
 		objects: make(map[string]object),
 		token: token,
 		id: id,
-		next: make(chan *viewState, 1),
 		wait: make(chan bool, 1),
+		readOnly: true,
 	}
 
 	key := makeVsKey(token, id)
@@ -86,13 +87,21 @@ func (m *viewStateManager) createViewState(token Token, genId bool, id uint32) *
 	m.vsMutex.Unlock()
 
 	if genId {
-		// write viewstate creation to disk
-		mut := &mutation{
-			typ:mut_create_vs,
-			vs:id,
+		if readOnly {
+			vs.readOnly = true
+			vs.vsPosition = m.db.segmentManager.nextWritePosition(vs.token)
+		} else {
+			vs.readOnly = false
+			// write viewstate creation to disk
+			mut := &mutation{
+				typ:mut_create_vs,
+				vs:id,
+				token:token,
+			}
+			entry := m.db.segmentManager.writeMutation(vs.token, mut, false)
+			vs.vsPosition = entry.absolutePosition()
+			mut.execute(m.db, false)
 		}
-		m.db.segmentManager.writeExecuteMutation(vs.token, mut, m.db)
-		mut.execute(m.db, false)
 	}
 
 	return vs
@@ -119,36 +128,28 @@ func (m *viewStateManager) getViewState(token Token, id uint32) *viewState {
 }
 
 func (m *viewStateManager) lockManagerRoutine() {
-	var next *viewState
-
 	for {
-		if next != nil {
-			locked, abort := next.lockObjects()
-			if abort || locked {
-				next.wait <- true
-			}
-		}
-
 		select {
-		case vs := <- m.lockObjects:
-			locked, abort := vs.lockObjects()
-			if locked || abort {
-				vs.wait <- true
-			}
 
 		case vs := <- m.unlockObjects:
 			vs.unlockObjects()
 
-			// another vs was waiting for this vs to unlock, push it next in line
-			if len(vs.next) > 0 {
-				next = <- vs.next
-			}
+		case vs := <- m.lockObjects:
+			locked, abort := vs.lockObjects()
+
+			_ = locked // TODO: if locked, wait!
+			_ = abort 
+			vs.wait <- true
+
+
+		// TODO: add a timeout manager that abort long waiting transactions
+
 		}
 
 	}
 }
 
-func (m *viewStateManager) lockObject(objMapKey string, vs *viewState, readonly bool) (success, abort bool, blockerVs *viewState) {
+func (m *viewStateManager) lockObject(objMapKey string, vs *viewState, readonly bool) (success, abort bool) {
 	lock, found := m.objectsLocks[objMapKey]
 	// TODO: Implement readonly locks waiting
 
@@ -157,14 +158,12 @@ func (m *viewStateManager) lockObject(objMapKey string, vs *viewState, readonly 
 		if !lock.readonly {
 			success = false
 			abort = true
-			blockerVs = lock.vs
 			return
 		}
 
 		// wait for the lock
 		success = false
 		abort = false
-		blockerVs = lock.vs
 	} else {
 		m.objectsLocks[objMapKey] = objectLock{
 			readonly: readonly,
@@ -208,18 +207,18 @@ type viewState struct {
 	db		*Db
 
 	token		Token
+	vsPosition	uint64
+
+	readOnly	bool // TODO: use this to skip prep, commit to disk for readonly vs
 	id		uint32
-	segEntry	*segmentEntry
 
 	objects		map[string]object
-	hasMutations	bool // TODO: use this to skip prep, commit to disk for readonly vs
 
-	next		chan *viewState
 	error		os.Error
 	wait		chan bool
 }
 
-func (vs *viewState) getObject(containerName, key string) (obj object, err os.Error) { 
+func (vs *viewState) getObject(containerName, key string, loadData bool) (obj object, err os.Error) { 
 	mapkey := implodeObjectKey(containerName, key)
 	
 	if obj, found := vs.objects[mapkey]; found {
@@ -231,9 +230,42 @@ func (vs *viewState) getObject(containerName, key string) (obj object, err os.Er
 		return object{}, os.NewError("Container not found")
 	}
 
-	obj, _ = container.getObject(key)
-	// TODO: if obj is not loaded, load it
-	// TODO: add the object to vs.objects
+	obj, found = container.getObject(key)
+	if !found {
+		obj = object{}
+		obj.setFlag(obj_flag_exists, false)
+	} else {
+		// object exists but has not been loaded... load it!
+		if obj.getFlag(obj_flag_exists) && loadData && obj.data == nil {
+			lastPos := vs.db.segmentManager.getSegment(obj.segment).toAbsolutePosition(obj.position)
+			mutations := make([]*mutation, 0)
+
+			found := false
+			for !found {
+				seg := vs.db.segmentManager.getSegmentTokenPosition(vs.token, lastPos)
+				entry, err := seg.readAbsolute(lastPos)
+				if err != nil {
+					return object{}, err
+				}
+
+				mutations = append(mutations, entry.mutation)
+				lastPos = entry.mutation.lastPos
+
+				if lastPos == 0 {
+					found = true
+				}
+			}
+
+			for i:=len(mutations)-1; i>=0; i-- {
+				err = mutations[i].op.mutateObject(&obj)
+				if err != nil {
+					return obj, err
+				}
+			}
+		}
+	}
+
+	vs.objects[mapkey] = obj
 
 	return
 }
@@ -244,19 +276,41 @@ func (vs *viewState) setObject(containerName, key string, obj object) {
 	vs.objects[mapkey] = obj
 }
 
-func (vs *viewState) mutateObject(op mutationOperation) (err os.Error) {
-	// TODO: Get object, save initial version
+func (vs *viewState) mutateObject(op mutationOperation, partial bool) (err os.Error) {
+	if vs.readOnly {
+		panic(fmt.Sprintf("Should mutate object since viewstate (%d) is readonly!", vs.id))
+	}
+
+
+	initObj, err := vs.getObject(op.getContainer(), op.getKey(), false)
+	if err != nil {
+		return err
+	}
+	
+	var lastPos uint64 = 0
+	if initObj.getFlag(obj_flag_exists) {
+		lastPos = vs.db.segmentManager.getSegment(initObj.segment).toAbsolutePosition(initObj.position)
+	}
+
+	// TODO: Make sure we don't write more than X mutations. Over that, write a full mutation
+
+	if partial {
+		panic("IMPLEMENT!") // TODO: implement when walk will be implemented!
+	}
+
+	// write mutation
 	mut := &mutation{
 		typ: mut_obj_op,
 		op: op,
 		vs: vs.id,
+		token: vs.token,
+		lastPos: lastPos,
 	}
-	err = vs.db.segmentManager.writeExecuteMutation(vs.token, mut, vs.db)
-	if err != nil {
-		return
-	}
+	vs.db.segmentManager.writeMutation(vs.token, mut, false)
 
+	// execute mutation
 	err = mut.execute(vs.db, false)
+
 	return
 }
 
@@ -268,64 +322,42 @@ func (vs *viewState) prepareCommit() (err os.Error) {
 		return vs.error
 	}
 
+	// TODO: as soon as we implement distributed commit, we will need prepare written to disk + sync with replica
+
 	return
 }
-
-
 
 func (vs *viewState) commit() (err os.Error) {
 	mut := &mutation{
 		typ: mut_commit_vs,
+		token: vs.token,
 		vs: vs.id,
 	}
-	err = vs.db.segmentManager.writeExecuteMutation(vs.token, mut, vs.db)
-	if err == nil {
-		err = mut.execute(vs.db, false)
+
+	if !vs.readOnly {
+		vs.db.segmentManager.writeMutation(vs.token, mut, true)
 	}
 
+	err = mut.execute(vs.db, false)
 	vs.db.viewstateManager.unlockObjects <- vs
 
 	return
 }
-
-//
-// Real execution of the commit (through the mutation)
-//
-func (vs *viewState) executeCommit() {
-	for objMapKey, obj := range vs.objects {
-		if obj.isFlag(obj_flag_new) {
-			obj.setFlag(obj_flag_new, false)
-			containerName, objKey := explodeObjectKey(objMapKey)
-			container, _ := vs.db.getContainer(containerName)
-			container.setObject(objKey, obj)
-		}
-	}
-
-	vs.db.viewstateManager.deleteViewState(vs)
-}
-
 
 func (vs *viewState) rollback() (err os.Error) {
 	mut := &mutation{
 		typ: mut_rollback_vs,
 		vs: vs.id,
+		token: vs.token,
 	}
-	err = vs.db.segmentManager.writeExecuteMutation(vs.token, mut, vs.db)
-	if err != nil {
-		return err
+
+	if !vs.readOnly {
+		vs.db.segmentManager.writeMutation(vs.token, mut, false)
 	}
 
 	vs.db.viewstateManager.unlockObjects <- vs
-
 	err = mut.execute(vs.db, false)
 	return
-}
-
-//
-// Real execution of the rollback (through the mutation)
-//
-func (vs *viewState) executeRollback() {
-	vs.db.viewstateManager.deleteViewState(vs)
 }
 
 
@@ -337,33 +369,18 @@ func (vs *viewState) executeRollback() {
 func (vs *viewState) lockObjects() (locked, abort bool) {
 	locked = true
 	abort = true
-	vsSegmentPosition := vs.segEntry.absolutePosition() // TODO: replace... we should have a way to get position for readonly
-
 
 	// TODO: Always lock in the same order!!
 
 	for objMapKey, obj := range vs.objects {
-		forWrite := obj.isFlag(obj_flag_new)
+		forWrite := obj.getFlag(obj_flag_new)
+		//forWrite = true // TODO: REPAIR IT!
 
 		// get the lock
-		success, abort, blocker := vs.db.viewstateManager.lockObject(objMapKey, vs, !forWrite)
-		if abort {
+		success, abort := vs.db.viewstateManager.lockObject(objMapKey, vs, !forWrite)
+		if abort || !success { // TODO: if we just can't get the lock because it's taken, we shouldn't abort!
 			locked = false
 			abort = true
-			return locked, abort
-		}
-		if !success {
-			locked = false
-
-			// we are blocked by another vs, wait in line!
-			if len(blocker.next) < cap(blocker.next) {
-				abort = false
-				blocker.next <- vs
-			} else {
-				// no more room to wait, we abort
-				abort = true
-			}
-
 			return locked, abort
 		}
 
@@ -381,7 +398,7 @@ func (vs *viewState) lockObjects() (locked, abort bool) {
 			objSeg := vs.db.segmentManager.getSegment(initObj.segment)
 			objPos := objSeg.toAbsolutePosition(initObj.position)
 			
-			if objPos > vsSegmentPosition {
+			if objPos > vs.vsPosition {
 				locked = false
 				abort = true
 				vs.error = os.NewError(fmt.Sprintf("Object %s/%s has changed during transaction", containerName, objKey))
@@ -440,9 +457,12 @@ type mutation struct {
 
 	typ	uint16
 	vs	uint32
+	token	Token
 
 	// mut_obj_op
 	op		mutationOperation
+	flags		byte
+	lastPos		uint64
 }
 
 func (mut *mutation) execute(db *Db, replay bool) (err os.Error) {
@@ -468,20 +488,16 @@ func (mut *mutation) execute(db *Db, replay bool) (err os.Error) {
 func (mut *mutation) executeCreateVs(db *Db, replay bool) (err os.Error) {
 	// only create it if we are on replay
 	if replay {
-		vs := db.viewstateManager.createViewState(mut.segEntry.token, false, mut.vs)
-		vs.segEntry = mut.segEntry
-	} else {
-		vs := db.viewstateManager.getViewState(mut.segEntry.token, mut.vs)
-		vs.segEntry = mut.segEntry
+		db.viewstateManager.createViewState(mut.token, false, false, mut.vs)
 	}
 	return nil
 }
 
 func (mut *mutation) executeObjectOperation(db *Db, replay bool) (err os.Error) {
-	vs := db.viewstateManager.getViewState(mut.segEntry.token, mut.vs)
+	vs := db.viewstateManager.getViewState(mut.token, mut.vs)
 	if vs == nil  {
-		log.Warning("Viewstate not found to execute object mutation: token=%d, vs=%d", mut.segEntry.token, mut.vs)
-		return os.NewError(fmt.Sprintf("Unknown ViewState to execute object operation on (token=%d, vs=%d)", mut.segEntry.token, mut.vs))
+		log.Warning("Viewstate not found to execute object mutation: token=%d, vs=%d", mut.token, mut.vs)
+		return os.NewError(fmt.Sprintf("Unknown ViewState to execute object operation on (token=%d, vs=%d)", mut.token, mut.vs))
 	}
 
 	container := mut.op.getContainer()
@@ -494,7 +510,7 @@ func (mut *mutation) executeObjectOperation(db *Db, replay bool) (err os.Error) 
 
 	// unless we are replaying, we mutate the object
 	if !replay {
-		curObj, err := vs.getObject(container, key)
+		curObj, err := vs.getObject(container, key, true)
 		if err != nil {
 			return err
 		}
@@ -508,22 +524,32 @@ func (mut *mutation) executeObjectOperation(db *Db, replay bool) (err os.Error) 
 }
 
 func (mut *mutation) executeCommitVs(db *Db, replay bool) (err os.Error) {
-	vs := db.viewstateManager.getViewState(mut.segEntry.token, mut.vs)
+	vs := db.viewstateManager.getViewState(mut.token, mut.vs)
 	if vs == nil {
 		return os.NewError("Unknown ViewState to commit")
 	}
 
-	vs.executeCommit()
+	for objMapKey, obj := range vs.objects {
+		if obj.getFlag(obj_flag_new) {
+			obj.setFlag(obj_flag_new, false)
+			obj.setFlag(obj_flag_exists, true)
+			containerName, objKey := explodeObjectKey(objMapKey)
+			container, _ := vs.db.getContainer(containerName)
+			container.setObject(objKey, obj)
+		}
+	}
+
+	vs.db.viewstateManager.deleteViewState(vs)
 	return
 }
 
 func (mut *mutation) executeRollbackVs(db *Db, replay bool) (err os.Error) {
-	vs := db.viewstateManager.getViewState(mut.segEntry.token, mut.vs)
+	vs := db.viewstateManager.getViewState(mut.token, mut.vs)
 	if vs == nil {
 		return os.NewError("Unknown ViewState to rollback")
 	}
 
-	vs.executeRollback()
+	vs.db.viewstateManager.deleteViewState(vs)
 	return
 }
 
@@ -561,7 +587,17 @@ func (mut *mutation) serialize(writer typedio.Writer) (err os.Error) {
 			return
 		}
 
-		writer.Write(bytes)						// operation
+		_, err = writer.Write(bytes)					// operation
+		if err != nil {
+			return
+		}
+
+		_, err = writer.Write([]byte{mut.flags})			// flags
+		if err != nil {
+			return
+		}
+
+		err = writer.WriteUint64(mut.lastPos)				// object last position
 		if err != nil {
 			return
 		}
@@ -606,9 +642,24 @@ func mutationUnserialize(reader typedio.Reader) (mut *mutation, err os.Error) {
 		}
 
 		bytes = make([]byte, int(bytecount))
-		reader.Read(bytes)						// operation
+		_, err = reader.Read(bytes)					// operation
+		if err != nil {
+			return mut, err
+		}
 
 		err = proto.Unmarshal(bytes, mut.op)
+		if err != nil {
+			return mut, err
+		}
+
+		bytes = make([]byte, 1)
+		_, err = reader.Read(bytes)					// flags
+		if err != nil {
+			return mut, err
+		}
+		mut.flags = bytes[0]
+
+		mut.lastPos, err = reader.ReadUint64()				// object last position
 		if err != nil {
 			return mut, err
 		}

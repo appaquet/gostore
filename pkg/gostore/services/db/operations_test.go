@@ -3,6 +3,7 @@ package db
 import (
 	"testing"
 	"fmt"
+	"gostore/log"
 )
 
 
@@ -50,6 +51,52 @@ func TestGet(t *testing.T) {
 	if len(ret.Returns) != 2 || ret.Returns[0].Value() != "allo" || ret.Returns[1].Value() != "val" {
 		t.Errorf("Should have returned 2 values ['allo', 'val'], got: %v", ret.Returns)
 	}
+
+
+	// single get in a transaction
+	ret = db.Execute(NewTransaction(func (b *TransactionBlock) {
+		ret1 := b.Get("test_container", "key")
+		b.Return(ret1)
+	}))
+
+	if len(ret.Returns) != 1 || ret.Returns[0].Value() != "val" {
+		t.Errorf("Should have returned 0 values ['val'], got: %v", ret.Returns)
+	}
+
+
+	// override
+	ret = db.Execute(NewTransaction(func (b *TransactionBlock) {
+		b.Set("test_container", "key", "val2")
+	}))
+
+
+	ret = db.Execute(NewTransaction(func (b *TransactionBlock) {
+		ret1 := b.Get("test_container", "key")
+		b.Return(ret1)
+	}))
+	if len(ret.Returns) != 1 || ret.Returns[0].Value() != "val2" {
+		t.Errorf("Should have returned 0 values ['val'], got: %v", ret.Returns)
+	}
+
+
+	// innexistant
+	log.MaxLevel = 10
+	ret = db.Execute(NewTransaction(func (b *TransactionBlock) {
+		ret1 := b.Get("test_container", "key2")
+		b.Return(ret1)
+	}))
+	if len(ret.Returns) != 1 || ret.Returns[0].Value() != nil {
+		t.Errorf("Should have returned 0 values [nil], got: %v", ret.Returns)
+	}
+
+
+	ret = db.Execute(NewTransaction(func (b *TransactionBlock) {
+		ret1 := b.Get("test_container", "key2")
+		b.Return(ret1)
+	}))
+	if len(ret.Returns) != 1 || ret.Returns[0].Value() != nil {
+		t.Errorf("Should have returned 0 values [nil], got: %v", ret.Returns)
+	}
 }
 
 
@@ -80,8 +127,12 @@ func BenchmarkGet(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		benchDb.Execute(NewTransaction(func(b *TransactionBlock) {
+		ret := benchDb.Execute(NewTransaction(func(b *TransactionBlock) {
 			b.Return(b.Get("test_container", "benchget"))
 		}))
+
+		if ret.Error != nil {
+			fmt.Errorf("Got an error during benchmark: %v", *ret.Error.Message)
+		}
 	}
 }

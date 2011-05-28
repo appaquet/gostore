@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"gostore/tools/buffer"
+	gsbuffer "gostore/tools/buffer"
 	"gostore/cluster"
 	"gostore/tools/typedio"
 	"gostore/log"
 	"sync"
+	"bufio"
 )
 
 const (
@@ -18,8 +19,6 @@ const (
 )
 
 // TODO: Segment cleanups
-// TODO: Thread safe!
-
 // TODO: Move into cluster
 type Token uint16
 
@@ -157,12 +156,7 @@ func (m *segmentManager) getWritableSegment(token Token) *segment {
 	return seg
 }
 
-func (m *segmentManager) writeExecuteMutation(token Token, mutation *mutation, db *Db) (err os.Error) {
-	m.writeMutation(token, mutation)
-	return
-}
-
-func (m *segmentManager) writeMutation(token Token, mutation *mutation) {
+func (m *segmentManager) writeMutation(token Token, mutation *mutation, sync bool) *segmentEntry {
 	m.writeMutex.Lock()
 	segment := m.getWritableSegment(token)
 
@@ -171,17 +165,28 @@ func (m *segmentManager) writeMutation(token Token, mutation *mutation) {
 	entry.mutation = mutation
 
 	// write the entry
-	segment.write(entry)
+	segment.write(entry, sync)
 	mutation.seg = segment
 	mutation.segEntry = entry
+	mutation.token = entry.token
 
 	// check if the segment can still be written after
 	size := segment.positionEnd - segment.positionStart
 	if size >= m.segMaxSize {
+		segment.sync(true)
 		segment.writable = false
 		log.Info("Segment %s too big for a new entry. Rotating!", segment)
 	}
 	m.writeMutex.Unlock()
+
+	return entry
+}
+
+func (m *segmentManager) nextWritePosition(token Token) uint64 {
+	m.writeMutex.Lock()
+	defer m.writeMutex.Unlock()
+	segment := m.getWritableSegment(token)
+	return segment.positionEnd
 }
 
 func (m *segmentManager) closeAll() {
@@ -211,6 +216,18 @@ func (m *segmentManager) replayAll(db *Db) (err os.Error) {
 
 func (m *segmentManager) getSegment(id uint16) (seg *segment) {
 	return m.segments[id]
+}
+
+func (m *segmentManager) getSegmentTokenPosition(token Token, absPos uint64) (seg *segment) {
+	for _, seg := range m.segments {
+		if seg != nil {
+			if seg.tokens.IsWithin(token) && seg.positionStart <= absPos && seg.positionEnd > absPos {
+				return seg
+			}
+		}
+	}
+
+	return
 }
 
 
@@ -369,6 +386,11 @@ type segment struct {
 	fd      *os.File
 	lock	*sync.Mutex
 	typedFd typedio.ReadWriter
+
+	buf		*bufio.Writer
+	typedBuf	typedio.Writer
+	fdPositionEnd	uint64
+
 	writable bool
 }
 
@@ -425,6 +447,9 @@ func createSegment(dataDir string, token_from, token_to Token, position uint64) 
 	}
 	seg.typedFd = typedio.NewReadWriter(seg.fd)
 	seg.writable = true
+	
+	seg.buf = bufio.NewWriter(seg.fd)
+	seg.typedBuf = typedio.NewWriter(seg.buf)
 
 	return seg
 }
@@ -472,7 +497,7 @@ func (s *segment) replay(db *Db) (err os.Error) {
 	return
 }
 
-func (s *segment) iter(fromRelPosition uint64) (entrych chan *segmentEntry, errch chan os.Error) {
+func (s *segment) iter(fromRelPosition uint32) (entrych chan *segmentEntry, errch chan os.Error) {
 	entrych = make(chan *segmentEntry)
 	errch = make(chan os.Error)
 
@@ -493,18 +518,22 @@ func (s *segment) iter(fromRelPosition uint64) (entrych chan *segmentEntry, errc
 			}
 
 			entrych <- entry
-			curPos += uint64(entry.totalSize())
+			curPos += entry.totalSize()
 		}
 		
 	}()
 	return entrych, errch
 }
 
-func (s *segment) read(relPosition uint64) (entry *segmentEntry, err os.Error) {
+func (s *segment) readAbsolute(absPosition uint64) (entry *segmentEntry, err os.Error) {
+	return s.read(uint32(absPosition - s.positionStart))
+}
+
+func (s *segment) read(relPosition uint32) (entry *segmentEntry, err os.Error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	if relPosition >= (s.positionEnd - s.positionStart) {
+	if uint64(relPosition) >= (s.positionEnd - s.positionStart) {
 		return nil, os.EOF
 	}
 	
@@ -521,21 +550,43 @@ func (s *segment) read(relPosition uint64) (entry *segmentEntry, err os.Error) {
 		return nil, err
 	}
 
-	if entry.position != (s.positionStart + relPosition) {
+	if entry.position != (s.positionStart + uint64(relPosition)) {
 		return nil, os.NewError("Invalid segment entry")
 	}
 
 	return entry, err
 }
 
-func (s *segment) write(entry *segmentEntry) {
+func (s *segment) write(entry *segmentEntry, sync bool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.fd.Seek(int64(s.positionEnd-s.positionStart), 0)
+	/*s.fd.Seek(int64(s.positionEnd-s.positionStart), 0)
 	entry.position = s.positionEnd
 	entry.write(s.typedFd)
+	s.positionEnd += uint64(entry.totalSize())*/
+
+	entry.position = s.positionEnd
+	entry.write(s.typedBuf)
 	s.positionEnd += uint64(entry.totalSize())
+
+	// we need to sync with disk. flush the buffer
+	if sync {
+		s.sync(false)
+	}
+}
+
+func (s *segment) sync(needLock bool) (err os.Error) {
+	if needLock {
+		s.lock.Lock()
+		defer s.lock.Unlock()
+	}
+
+	s.fd.Seek(int64(s.fdPositionEnd-s.positionStart), 0)
+	err = s.buf.Flush()
+	s.fdPositionEnd = s.positionEnd
+
+	return
 }
 
 func (s *segment) String() string {
@@ -583,6 +634,7 @@ func (e *segmentEntry) read(reader typedio.Reader) (err os.Error) {
 		return err
 	}
 	e.mutation.segEntry = e
+	e.mutation.token = e.token
 	e.mutation.seg = e.segment
 
 	return
@@ -594,8 +646,7 @@ func (e *segmentEntry) write(writer typedio.Writer) (err os.Error) {
 		return err
 	}
 
-
-	buf := buffer.New()
+	buf := gsbuffer.New()
 	err = e.mutation.serialize(buf)
 	if err != nil {
 		return err

@@ -67,6 +67,10 @@ func (op *TransactionOperation_Return) executeTransaction(t *Transaction, b *Tra
 
 }
 
+func (op *TransactionOperation_Return) init(t *Transaction, ti *transactionInfo) (err os.Error) {
+	return
+}
+
 // 
 // Set
 //
@@ -91,7 +95,8 @@ func (op *TransactionOperation_Set) executeTransaction(t *Transaction, b *Transa
 		}
 		op.Value.MakeAbsoluteValue(b)
 
-		osErr := vs.mutateObject(op)
+		partial := false // TODO: if walk, partial = true
+		osErr := vs.mutateObject(op, partial)
 		if osErr != nil {
 			return &TransactionReturn{
 				Error: &TransactionError{
@@ -102,6 +107,14 @@ func (op *TransactionOperation_Set) executeTransaction(t *Transaction, b *Transa
 		}
 	}
 
+	return
+}
+
+func (op *TransactionOperation_Set) init(t *Transaction, ti *transactionInfo) (err os.Error) {
+	// TODO: token!
+	if op.Destination.Object != nil {
+		ti.readOnly = false
+	}
 	return
 }
 
@@ -138,7 +151,7 @@ func (op *TransactionOperation_Get) executeTransaction(t *Transaction, b *Transa
 			ac.MakeAbsoluteValue(b)
 		}
 
-		obj, osErr := vs.getObject(op.Source.Object.Container.Value().(string), op.Source.Object.Key.Value().(string))
+		obj, osErr := vs.getObject(op.Source.Object.Container.Value().(string), op.Source.Object.Key.Value().(string), true)
 		if osErr != nil {
 			return &TransactionReturn{
 				Error: &TransactionError{
@@ -155,3 +168,9 @@ func (op *TransactionOperation_Get) executeTransaction(t *Transaction, b *Transa
 
 	return
 }
+
+func (op *TransactionOperation_Get) init(t *Transaction, ti *transactionInfo) (err os.Error) {
+	// TODO: token!
+	return
+}
+

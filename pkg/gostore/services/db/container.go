@@ -47,19 +47,23 @@ type object struct {
 }
 
 const (
-	obj_flag_deleted	byte = 0x01 // has been deleted
-	obj_flag_new		byte = 0x02 // mark as "new" in a viewstate (modified)
+	obj_flag_exists		byte = 1  // exists on disk, has not been deleted
+	obj_flag_new		byte = 2  // mark as "new" in a viewstate (modified)
+
+	obj_flag_partial1	byte = 4  // partial count bit #1
+	obj_flag_partial2	byte = 8  // partial count bit #1
+	obj_flag_partial3	byte = 16 // partial count bit #1
+	obj_flag_partial4	byte = 32 // partial count bit #1
 )
 
 func (o *object) String() string {
 	return fmt.Sprintf("object[seg=%d, pos=%d, data=%v]", o.segment, o.position, o.data)
 }
 
-func (o *object) isFlag(flag byte) bool {
+func (o *object) getFlag(flag byte) bool {
 	if o.flags&flag == flag {
 		return true
 	}
-
 	return false
 }
 
@@ -67,6 +71,20 @@ func (o *object) setFlag(flag byte, value bool) {
 	if value {
 		o.flags = o.flags | flag
 	} else {
-		o.flags = o.flags | ^flag
+		o.flags = o.flags & ^flag
 	}
+}
+
+func (o *object) setPartialCount(count byte) {
+	if count > 15 {
+		panic("Cannot set partial modification count over 15")
+	}
+	o.flags = (o.flags & ^byte(obj_flag_partial1+obj_flag_partial2+obj_flag_partial3+obj_flag_partial4)) | count << 2
+}
+
+func (o *object) getPartialCount() byte {
+	var count byte
+	count = o.flags << 2
+	count = count >> 4
+	return count
 }

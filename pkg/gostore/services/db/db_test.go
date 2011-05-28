@@ -45,6 +45,25 @@ func newTestDb(wipe bool, id int) *Db {
 	return db
 }
 
+func TestPartialCount(t *testing.T) {
+	o := &object{}
+
+	o.setPartialCount(10)
+	if o.getPartialCount() != 10 {
+		t.Errorf("Should be 10, got: %d. Flags %d", o.getPartialCount(), o.flags)
+	}
+
+	o.setPartialCount(0)
+	if o.getPartialCount() != 0 {
+		t.Errorf("Should be 0, got: %d. Flags %d", o.getPartialCount(), o.flags)
+	}
+
+	o.setPartialCount(15)
+	if o.getPartialCount() != 15 {
+		t.Errorf("Should be 15, got: %d. Flags %d", o.getPartialCount(), o.flags)
+	}
+}
+
 func TestWalk(t *testing.T) {
 
 	var container interface{}
@@ -124,9 +143,10 @@ func TestWalk(t *testing.T) {
 func TestReloadSetGet(t *testing.T) {
 	db := newTestDb(true, 0)
 	db.segmentManager.segMaxSize = 65536
-	for i:=0;i<10000;i++ {
+	for i:=0;i<1000;i++ {
+		id := i % 10
 		trx := NewTransaction(func(b *TransactionBlock) {
-			b.Set("test_container", "key", "val")
+			b.Set("test_container", fmt.Sprintf("key%d", id), fmt.Sprintf("val%d", id))
 		})
 		ret := db.Execute(trx)
 		if ret.Error != nil {
@@ -134,27 +154,27 @@ func TestReloadSetGet(t *testing.T) {
 			t.FailNow()
 		}
 	}
+
 	db.Close()
-	log.Error("%v", db.containers)
-
 	db = newTestDb(false, 0)
-	log.Error("%v", db.containers)
 
-
-	ret := db.Execute(NewTransaction(func (b *TransactionBlock) {
-		b.Return(b.Get("test_container", "key"))
-	}))
-	if len(ret.Returns) != 1 {
-		t.Errorf("Should have returned 1 item, got %v", ret.Returns)
-	} else if ret.Returns[0].Value() != "val" {
-		t.Errorf("Returned value should be 'val', got %v", ret.Returns[0].Value())
+	for i:=0;i<1000;i++ {
+		id := i % 10
+		ret := db.Execute(NewTransaction(func (b *TransactionBlock) {
+			b.Return(b.Get("test_container", fmt.Sprintf("key%d", id)))
+		}))
+		if len(ret.Returns) != 1 {
+			t.Errorf("i=%d, Should have returned 1 item, got %v", i, *ret.Error.Message)
+		} else if ret.Returns[0].Value() != fmt.Sprintf("val%d", id) {
+			t.Errorf("i=%d, Returned value should be 'val', got %v", i, ret.Returns[0].Value())
+		}
 	}
 }
 
-//*
+/*
 func TestMultiThread(t *testing.T) {
 	th := 2
-	ops := 10000
+	ops := 20000
 	c := make(chan bool, th)
 
 	f := func(id int) {
